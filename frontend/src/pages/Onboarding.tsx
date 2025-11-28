@@ -27,6 +27,8 @@ export default function Onboarding() {
     const [profile, setProfile] = useState({
         displayName: "",
         bio: "",
+        reddit: "",
+        twitter: "",
     });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -56,6 +58,8 @@ export default function Onboarding() {
             name: oauthUser?.name || profile.displayName,
             displayName: profile.displayName || oauthUser?.name || "User",
             bio: profile.bio,
+            redditHandle: profile.reddit,
+            xHandle: profile.twitter,
             interests: selectedInterests,
             notifications,
             onboardingComplete: true,
@@ -306,6 +310,26 @@ export default function Onboarding() {
                                         onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                                     />
                                     <div className="char-count">{profile.bio.length}/150</div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Reddit Account (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="u/username"
+                                        value={profile.reddit}
+                                        onChange={(e) => setProfile({ ...profile, reddit: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>X (Twitter) Account (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="@username"
+                                        value={profile.twitter}
+                                        onChange={(e) => setProfile({ ...profile, twitter: e.target.value })}
+                                    />
                                 </div>
                             </div>
                         </div>

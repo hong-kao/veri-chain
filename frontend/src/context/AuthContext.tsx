@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useUser, useClerk } from '@clerk/clerk-react';
 
 export interface AuthState {
     authType: 'wallet' | 'oauth' | null;
@@ -6,6 +7,7 @@ export interface AuthState {
     oauthUser?: {
         email: string;
         name: string;
+        picture?: string;
     };
     isConnected: boolean;
     canVote: boolean; // true if wallet connected (either directly or after OAuth)
@@ -14,14 +16,18 @@ export interface AuthState {
 interface AuthContextType extends AuthState {
     connectWallet: () => Promise<void>;
     disconnectWallet: () => void;
-    loginWithOAuth: (email: string, name: string) => void;
+    loginWithOAuth: (strategy: 'oauth_google' | 'oauth_reddit') => void;
     logout: () => void;
     connectWalletForOAuth: () => Promise<void>;
+    isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+    const { user: clerkUser, isSignedIn: isClerkSignedIn, isLoaded: isClerkLoaded } = useUser();
+    const { signOut, openSignIn } = useClerk();
+
     const [authState, setAuthState] = useState<AuthState>({
         authType: null,
         isConnected: false,
@@ -40,6 +46,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
         }
     }, []);
+
+    // Sync Clerk state with local state
+    useEffect(() => {
+        if (isClerkLoaded && isClerkSignedIn && clerkUser) {
+            setAuthState(prev => ({
+                ...prev,
+                authType: 'oauth',
+                isConnected: true,
+                oauthUser: {
+                    email: clerkUser.primaryEmailAddress?.emailAddress || '',
+                    name: clerkUser.fullName || clerkUser.username || '',
+                    picture: clerkUser.imageUrl,
+                },
+                // Keep existing wallet info if present
+                walletAddress: prev.walletAddress,
+                canVote: !!prev.walletAddress,
+            }));
+        } else if (isClerkLoaded && !isClerkSignedIn && authState.authType === 'oauth') {
+            // If Clerk signs out, clear oauth state but keep wallet if it was separate? 
+            // For now, let's just clear if it was oauth.
+            setAuthState(prev => ({
+                ...prev,
+                authType: prev.walletAddress ? 'wallet' : null,
+                isConnected: !!prev.walletAddress,
+                oauthUser: undefined,
+                canVote: !!prev.walletAddress
+            }));
+        }
+    }, [isClerkLoaded, isClerkSignedIn, clerkUser]);
 
     // Save auth state to localStorage whenever it changes
     useEffect(() => {
@@ -109,17 +144,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
     };
 
-    const loginWithOAuth = (email: string, name: string) => {
-        setAuthState({
-            authType: 'oauth',
-            oauthUser: { email, name },
-            isConnected: true,
-            canVote: false, // Can't vote until wallet connected
+    const loginWithOAuth = (strategy: 'oauth_google' | 'oauth_reddit') => {
+        openSignIn({
+            appearance: {
+                elements: {
+                    modalContent: {
+                        background: '#1a1a1a',
+                        color: '#fff'
+                    }
+                }
+            }
         });
     };
 
     const logout = () => {
         disconnectWallet();
+        signOut();
     };
 
     return (
@@ -131,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 loginWithOAuth,
                 logout,
                 connectWalletForOAuth,
+                isLoading: !isClerkLoaded,
             }}
         >
             {children}

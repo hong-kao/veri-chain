@@ -1,204 +1,175 @@
-import { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import "./Dashboard.css";
-import "./ClaimsSubmit.css";
+import React, { useState } from 'react';
+import './ClaimsSubmit.css';
 
-interface Message {
-    type: 'user' | 'agent';
-    content: string;
-    status?: 'verified' | 'rejected' | 'unclear';
-    confidence?: number;
-}
-
-export default function ClaimsSubmit() {
-    const { authType, canVote } = useAuth();
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState("");
+const ClaimsSubmit: React.FC = () => {
+    const [inputValue, setInputValue] = useState("");
+    const [messages, setMessages] = useState<{
+        role: 'user' | 'ai',
+        text?: string,
+        verdict?: {
+            status: 'verified' | 'fake' | 'uncertain';
+            confidence: number;
+            explanation: string;
+            evidence: string[];
+        }
+    }[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isTyping, setIsTyping] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [loadingText, setLoadingText] = useState("Thinking deeply about your claim...");
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    const loadingMessages = [
+        "Thinking deeply about your claim...",
+        "Cross-referencing 10,000+ sources...",
+        "Running credibility checks...",
+        "Brewing verification magic...",
+        "Almost there..."
+    ];
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, isProcessing, isTyping]);
+    React.useEffect(() => {
+        let interval: any;
+        if (isProcessing) {
+            let index = 0;
+            interval = setInterval(() => {
+                index = (index + 1) % loadingMessages.length;
+                setLoadingText(loadingMessages[index]);
+            }, 800);
+        }
+        return () => clearInterval(interval);
+    }, [isProcessing]);
 
-    const simulateAgentProcessing = async (claim: string): Promise<Message> => {
-        // Simulate AI processing delay
-        await new Promise(resolve => setTimeout(resolve, 3000));
+    const handleSendMessage = () => {
+        if (!inputValue.trim()) return;
 
-        // Mock verdict generation (would call actual API in production)
-        const verdicts = [
-            {
-                status: 'verified' as const,
-                content: `**CLAIM VERIFIED**\n\nConfidence: 87%\n\n**Analysis:**\nBased on current market trends and expert predictions, this claim shows strong supporting evidence. Multiple credible sources corroborate this statement.\n\n**Key Factors:**\n• Historical data supports this trajectory\n• Expert consensus aligns with claim\n• No contradictory evidence found\n\n**Recommendation:** Approved for verification`,
-                confidence: 87,
-            },
-            {
-                status: 'rejected' as const,
-                content: `**CLAIM REJECTED**\n\nConfidence: 23%\n\n**Analysis:**\nInsufficient evidence to support this claim. Multiple factual inconsistencies detected.\n\n**Issues Identified:**\n• Contradicts established data\n• Lacks credible sources\n• Time frame unrealistic\n\n**Recommendation:** Requires substantial revision`,
-                confidence: 23,
-            },
-            {
-                status: 'unclear' as const,
-                content: `**NEEDS CLARIFICATION**\n\nConfidence: 56%\n\n**Analysis:**\nThe claim requires more specific details for accurate verification.\n\n**Suggestions:**\n• Add specific time frames\n• Provide measurable metrics\n• Include source references\n\n**Recommendation:** Revise and resubmit with additional context`,
-                confidence: 56,
-            },
-        ];
-
-        // Randomly pick a verdict (or use logic based on claim content)
-        const verdict = verdicts[Math.floor(Math.random() * verdicts.length)];
-
-        return {
-            type: 'agent',
-            ...verdict,
-        };
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isProcessing) return;
-
-        const userMessage: Message = {
-            type: 'user',
-            content: input,
-        };
-
-        setMessages(prev => [...prev, userMessage]);
-        setInput("");
+        const newMessages = [...messages, { role: 'user' as const, text: inputValue }];
+        setMessages(newMessages);
+        setInputValue("");
         setIsProcessing(true);
+        setLoadingText(loadingMessages[0]);
 
-        // Get verdict response
-        const verdict = await simulateAgentProcessing(input);
-
-        setIsProcessing(false);
-        setIsTyping(true);
-
-        // Simulate typing animation
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setIsTyping(false);
-        setMessages(prev => [...prev, verdict]);
+        // Simulate AI response with "insane loader" duration
+        setTimeout(() => {
+            setMessages(prev => [...prev, {
+                role: 'ai',
+                verdict: {
+                    status: 'verified',
+                    confidence: 94,
+                    explanation: "Based on cross-referencing multiple trusted sources, this claim appears to be accurate. The event was reported by major news outlets and corroborated by official statements.",
+                    evidence: [
+                        "Confirmed by Reuters and AP News",
+                        "Official press release from the organization",
+                        "Corroborated by live video footage"
+                    ]
+                }
+            }]);
+            setIsProcessing(false);
+        }, 5000);
     };
 
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link active">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link">
-                        Leaderboard
-                    </Link>
+        <div className="ai-page-container">
+            {/* Sidebar */}
+            <aside className="ai-sidebar-strip">
+                <div className="sidebar-top">
+                    <button className="sidebar-icon-btn active"><span className="icon">+</span></button>
+                    <button className="sidebar-icon-btn"><span className="icon">S</span></button>
+                    <button className="sidebar-icon-btn"><span className="icon">E</span></button>
                 </div>
-            </nav>
-
-            <div className="dashboard-container chat-container">
-                <div className="chat-header">
-                    <h1>Submit New Claim</h1>
-                    <p>AI agents will verify your claim in real-time</p>
+                <div className="sidebar-bottom">
+                    <div className="user-avatar-circle">N</div>
                 </div>
+            </aside>
 
-                <div className="chat-messages">
-                    {messages.length === 0 && (
-                        <div className="empty-state">
-                            <h3>Start Your Claim</h3>
-                            <p>Type a statement you believe can be verified below</p>
+            {/* Main Chat Area */}
+            <main className="ai-main-card">
+                {messages.length === 0 ? (
+                    <div className="empty-state">
+                        <div className="greeting-section">
+                            <h1>Hello, Ashrith</h1>
+                            <p>How can I help you verify today?</p>
                         </div>
-                    )}
 
-                    {messages.map((msg, idx) => (
-                        <div key={idx} className={`message ${msg.type}`}>
-                            {msg.type === 'user' ? (
-                                <div className="message-bubble user-bubble">
-                                    {msg.content}
-                                </div>
-                            ) : (
-                                <div className="message-bubble agent-bubble">
-                                    <div className="verdict-content">
-                                        {msg.content.split('\n').map((line, i) => {
-                                            // Simple markdown rendering
-                                            if (line.startsWith('**') && line.endsWith('**')) {
-                                                return <h3 key={i}>{line.replace(/\*\*/g, '')}</h3>;
-                                            }
-                                            if (line.startsWith('•')) {
-                                                return <li key={i}>{line.substring(1).trim()}</li>;
-                                            }
-                                            if (line.trim()) {
-                                                return <p key={i}>{line}</p>;
-                                            }
-                                            return <br key={i} />;
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-
-                    {isProcessing && (
-                        <div className="message agent">
-                            <div className="agent-loader">
-                                <div className="loader-animation">
-                                    <div className="agent-avatars">
-                                        <div className="agent-avatar">AI</div>
-                                    </div>
-                                    <div className="orchestration-lines">
-                                        <div className="line"></div>
-                                        <div className="line"></div>
-                                        <div className="line"></div>
-                                    </div>
-                                </div>
-                                <p className="loader-text">AI Agents are cooking...</p>
-                                <div className="loader-dots">
-                                    <span></span>
-                                    <span></span>
-                                    <span></span>
-                                </div>
+                        <div className="suggestions-grid">
+                            <div className="suggestion-card">
+                                <span className="card-icon">N</span>
+                                <p>Verify a recent news article</p>
+                            </div>
+                            <div className="suggestion-card">
+                                <span className="card-icon">C</span>
+                                <p>Check a crypto project</p>
+                            </div>
+                            <div className="suggestion-card">
+                                <span className="card-icon">S</span>
+                                <p>Analyze a social media post</p>
+                            </div>
+                            <div className="suggestion-card">
+                                <span className="card-icon">D</span>
+                                <p>Deepfake detection</p>
                             </div>
                         </div>
-                    )}
-
-                    {isTyping && (
-                        <div className="message agent">
-                            <div className="typing-indicator">
-                                <span></span>
-                                <span></span>
-                                <span></span>
+                    </div>
+                ) : (
+                    <div className="chat-feed">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`message-bubble ${msg.role}`}>
+                                {msg.text && <div className="message-content">{msg.text}</div>}
+                                {msg.verdict && (
+                                    <div className="verdict-card">
+                                        <div className="verdict-header">
+                                            <div className={`verdict-status status-${msg.verdict.status}`}>
+                                                {msg.verdict.status}
+                                            </div>
+                                            <div className="confidence-score">
+                                                <span className="score-label">CONFIDENCE</span>
+                                                <span className="score-value">{msg.verdict.confidence}%</span>
+                                            </div>
+                                        </div>
+                                        <p className="verdict-explanation">
+                                            {msg.verdict.explanation}
+                                        </p>
+                                        <div className="evidence-section">
+                                            <h4>Key Evidence</h4>
+                                            <ul className="evidence-list">
+                                                {msg.verdict.evidence.map((item, i) => (
+                                                    <li key={i} className="evidence-item">
+                                                        <span className="evidence-icon">✓</span>
+                                                        {item}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        ))}
+                        {isProcessing && (
+                            <div className="thinking-state">
+                                <div className="infinity-loader"></div>
+                                <span>{loadingText}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-                    <div ref={messagesEndRef} />
+                {/* Input Area */}
+                <div className="chat-input-container">
+                    <div className="chat-input-wrapper">
+                        <button className="attach-btn"><span className="icon">+</span></button>
+                        <input
+                            type="text"
+                            placeholder="Ask anything..."
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                        />
+                        <button className="send-btn" onClick={handleSendMessage}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-
-                <form className="chat-input-container" onSubmit={handleSubmit}>
-                    <input
-                        type="text"
-                        className="chat-input"
-                        placeholder="Type your claim here..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        disabled={isProcessing}
-                    />
-                    <button
-                        type="submit"
-                        className="chat-send-btn"
-                        disabled={!input.trim() || isProcessing}
-                    >
-                        {isProcessing ? '...' : '→'}
-                    </button>
-                </form>
-            </div>
+            </main>
         </div>
     );
-}
+};
+
+export default ClaimsSubmit;

@@ -157,7 +157,6 @@ footer {
   align-items: flex-end;
   z-index: 100;
   background: transparent;
-  backdrop-filter: blur(5px);
 }
 
 footer h1 {
