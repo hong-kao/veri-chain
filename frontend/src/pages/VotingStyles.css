@@ -1,0 +1,62 @@
+/* Claims page additional styles */
+
+.claim-voting {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vote-btn {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.2s ease;
+    font-family: var(--font-source-code), monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    letter-spacing: 0.5px;
+}
+
+.vote-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.vote-btn.upvote.active {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.6);
+    color: #4caf50;
+}
+
+.vote-btn.downvote.active {
+    background: rgba(244, 67, 54, 0.2);
+    border-color: rgba(244, 67, 54, 0.6);
+    color: #f44336;
+}
+
+.vote-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.vote-btn.disabled:hover {
+    transform: none;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 768px) {
+    .claim-voting {
+        flex-direction: column;
+    }
+}

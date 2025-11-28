@@ -1,0 +1,141 @@
+.explore-title {
+  font-size: 2.5rem;
+  font-weight: 400;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.explore-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+.tab-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  padding: 0.75rem 2rem;
+  border-radius: 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: transparent;
+}
+
+.trending-section h2 {
+  font-size: 1.75rem;
+  font-weight: 400;
+  margin-bottom: 2rem;
+}
+
+.claims-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 2rem;
+}
+
+.explore-claim-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.explore-claim-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.claim-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.claim-author {
+  font-size: 0.875rem;
+  opacity: 0.7;
+  margin-bottom: 1rem;
+}
+
+.claim-text {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+}
+
+.claim-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.stat-icon {
+  font-size: 1rem;
+}
+
+.claim-category {
+  display: inline-block;
+  background: rgba(99, 102, 241, 0.2);
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.read-more-btn {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.read-more-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #6366f1;
+}
+
+@media (max-width: 768px) {
+  .claims-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .explore-tabs {
+    flex-direction: column;
+  }
+
+  .tab-btn {
+    width: 100%;
+  }
+}
