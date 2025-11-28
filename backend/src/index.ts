@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { env } from "./config/env.config.js";
 import analyzeRoutes from "./routes/analyze.routes.js";
+import { connectDb } from "./config/db.config.js";
 
 const app = express();
 const PORT = env.PORT;
@@ -41,6 +42,8 @@ app.use((req, res) => {
 });
 
 //start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\nServer is up!`);
+  await connectDb();
+  console.log("Connected to database");
 });

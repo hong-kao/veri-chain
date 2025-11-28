@@ -1,0 +1,254 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                Int       @id @default(autoincrement())
+  wallet_address    String    @unique
+  full_name         String?
+  email             String?
+  reddit_profile    String?
+  x_profile         String?
+  farcaster_profile String?
+
+  notif_type        NotifType?
+  interests         Interests[]
+
+  reputation_score  Int?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @default(now()) @updatedAt
+
+  claims            Claim[]
+  votes             Vote[]
+  notifications     Notification[]
+
+  @@map("users")
+}
+
+model Claim {
+  id                Int       @id @default(autoincrement())
+  claim_uuid        String    @unique @default(uuid()) @db.Uuid
+  submitter_id      Int
+  submitter         User      @relation(fields: [submitter_id], references: [id])
+
+  raw_input         String
+  normalized_text   String?
+  claim_type        ClaimType?
+  platform          PlatformType?
+  platform_post_id  String?
+  platform_author   String?
+  platform_url      String?
+
+  extracted_urls    String?   // JSON string
+  media_images      String?   // JSON string
+  media_videos      String?   // JSON string
+
+  ai_verdict        VerdictType?
+  ai_confidence     Float?
+  ai_flags          String?   // JSON string
+  ai_explanation    String?
+
+  final_verdict     VerdictType?
+  final_confidence  Float?
+
+  status            ClaimStatus @default(pending_ai)
+
+  claim_hash        String?
+  onchain_claim_tx  String?
+  onchain_resolve_tx String?
+
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @default(now()) @updatedAt
+  resolved_at       DateTime?
+
+  agent_results     AgentResult[]
+  voting_sessions   VotingSession[]
+  votes             Vote[]
+  notifications     Notification[]
+  onchain_events    OnchainEvent[]
+
+  @@map("claims")
+}
+
+model AgentResult {
+  id            Int       @id @default(autoincrement())
+  claim_id      Int
+  claim         Claim     @relation(fields: [claim_id], references: [id])
+  agent_name    AgentType
+
+  verdict       VerdictType?
+  confidence    Float?
+  flags         String?   // JSON string
+  raw_result    String?   // JSON blob
+
+  created_at    DateTime  @default(now())
+
+  @@map("agent_results")
+}
+
+model VotingSession {
+  id                   Int       @id @default(autoincrement())
+  claim_id             Int
+  claim                Claim     @relation(fields: [claim_id], references: [id])
+
+  route_reason         String?
+  urgency              UrgencyType?
+  voting_window_secs   Int?
+  min_votes_required   Int?
+
+  status               VotingStatus @default(open)
+
+  opened_at            DateTime  @default(now())
+  closes_at            DateTime?
+  closed_at            DateTime?
+
+  votes                Vote[]
+  notifications        Notification[]
+
+  @@map("voting_sessions")
+}
+
+model Vote {
+  id              Int       @id @default(autoincrement())
+  session_id      Int
+  session         VotingSession @relation(fields: [session_id], references: [id])
+  claim_id        Int
+  claim           Claim     @relation(fields: [claim_id], references: [id])
+  voter_id        Int
+  voter           User      @relation(fields: [voter_id], references: [id])
+
+  choice          VerdictType
+  confidence      Float?
+
+  staked_amount   Decimal?  @db.Decimal(36, 18)
+  onchain_vote_tx String?
+
+  created_at      DateTime  @default(now())
+
+  @@unique([session_id, voter_id])
+  @@map("votes")
+}
+
+model Notification {
+  id              Int       @id @default(autoincrement())
+  user_id         Int
+  user            User      @relation(fields: [user_id], references: [id])
+  claim_id        Int?
+  claim           Claim?    @relation(fields: [claim_id], references: [id])
+  session_id      Int?
+  session         VotingSession? @relation(fields: [session_id], references: [id])
+
+  notif_type      NotifChannelType
+  status          NotifStatus @default(pending)
+
+  payload         String?   // JSON payload
+  created_at      DateTime  @default(now())
+  sent_at         DateTime?
+
+  @@map("notifications")
+}
+
+model OnchainEvent {
+  id           Int       @id @default(autoincrement())
+  claim_id     Int?
+  claim        Claim?    @relation(fields: [claim_id], references: [id])
+  tx_hash      String
+  event_type   OnchainEventType
+  payload      String?   // JSON
+  created_at   DateTime  @default(now())
+
+  @@map("onchain_events")
+}
+
+enum NotifType {
+  none
+  important_only
+  standard
+  frequent
+}
+
+enum Interests {
+  politics
+  health
+  finance
+  tech
+  sports
+  misc
+}
+
+enum ClaimType {
+  text
+  image
+  video
+  link
+  mixed
+}
+
+enum PlatformType {
+  twitter
+  reddit
+  farcaster
+  other
+}
+
+enum VerdictType {
+  true_
+  false_
+  unclear
+}
+
+enum ClaimStatus {
+  pending_ai
+  ai_evaluated
+  needs_vote
+  resolved
+  deferred
+}
+
+enum AgentType {
+  logic_consistency
+  citation_evidence
+  source_credibility
+  social_evidence
+  media_forensics
+  propagation_pattern
+}
+
+enum UrgencyType {
+  low
+  normal
+  high
+}
+
+enum VotingStatus {
+  open
+  closed
+  cancelled
+}
+
+enum NotifChannelType {
+  in_app
+  email
+  push
+}
+
+enum NotifStatus {
+  pending
+  sent
+  failed
+}
+
+enum OnchainEventType {
+  claim_registered
+  vote_cast
+  rewards_distributed
+  claim_resolved
+}
