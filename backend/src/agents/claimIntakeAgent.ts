@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -68,7 +68,7 @@ const ClaimIntakeState = Annotation.Root({
     })
 });
 
-async function parseInput(state: typeof ClaimIntakeState.State){
+async function parseInput(state: typeof ClaimIntakeState.State) {
     const systemPrompt = `You are a Claim Intake Agent for VeriChain.
                 Your job is to parse and normalize raw social media (reddit/twitter etc) posts, news claims, links, or claims into structured data.
 
@@ -104,7 +104,7 @@ async function parseInput(state: typeof ClaimIntakeState.State){
                 }
 
                 If any field is not found, use empty string, empty array, or empty object as appropriate.`;
-    
+
     const response = await llm.invoke([
         new SystemMessage(systemPrompt),
         new HumanMessage(`Parse and normalize this input:\n\n${state.rawInput}`)
@@ -115,27 +115,27 @@ async function parseInput(state: typeof ClaimIntakeState.State){
     };
 }
 
-async function extractStructuredData(state: typeof ClaimIntakeState.State){
+async function extractStructuredData(state: typeof ClaimIntakeState.State) {
     const lastMessage = state.messages.at(-1);
-    
-    if(!lastMessage){
+
+    if (!lastMessage) {
         return {
             error: "No response from parsing step",
             normalizedClaim: null
         };
     }
 
-    try{
-        const content = typeof lastMessage.content === 'string' 
-            ? lastMessage.content 
+    try {
+        const content = typeof lastMessage.content === 'string'
+            ? lastMessage.content
             : JSON.stringify(lastMessage.content);
-        
+
         //Extract JSON from markdown code blocks if present
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const parsed = JSON.parse(jsonStr);
-        
+
         //Validate and structure the output
         const normalizedClaim = {
             text: parsed.claimText || state.rawInput,
@@ -161,13 +161,13 @@ async function extractStructuredData(state: typeof ClaimIntakeState.State){
             normalizedClaim,
             error: null
         };
-    }catch(err){
+    } catch (err) {
         console.error("Failed to parse claim intake response:", err);
-        
+
         //Fallback: Basic extraction
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const urls = state.rawInput.match(urlRegex) || [];
-        
+
         const normalizedClaim = {
             text: state.rawInput.replace(urlRegex, '').trim(),
             urls,
@@ -188,14 +188,14 @@ async function extractStructuredData(state: typeof ClaimIntakeState.State){
     }
 }
 
-async function shouldContinue(state: typeof ClaimIntakeState.State){
+async function shouldContinue(state: typeof ClaimIntakeState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     //if we still have a message but no normalized claim yet, then extract data
     if (lastMessage && !state.normalizedClaim) {
         return "extractStructuredData";
     }
-    
+
     return END;
 }
 
@@ -217,7 +217,7 @@ export { claimIntakeAgent, ClaimIntakeState };
 //testing code:
 async function testClaimIntakeAgent() {
     console.log("🔍 Testing Claim Intake Agent\n");
-    
+
     const testCases = [
         {
             name: "Twitter Post",
@@ -249,15 +249,15 @@ async function testClaimIntakeAgent() {
         console.log(`Test: ${testCase.name}`);
         console.log(`${"=".repeat(60)}\n`);
         console.log(`Input:\n${testCase.input}\n`);
-        
+
         const result = await claimIntakeAgent.invoke({
             rawInput: testCase.input,
             messages: []
         });
-        
+
         console.log("📊 Normalized Output:");
         console.log(JSON.stringify(result.normalizedClaim, null, 2));
-        
+
         if (result.error) {
             console.log(`\n⚠️  Warning: ${result.error}`);
         }

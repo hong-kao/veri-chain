@@ -1,12 +1,12 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
 import axios from 'axios';
-import { scrapeWebsite } from '../utils/scraper';
+import { scrapeWebsite } from '../utils/scraper.js';
 
 //Choice of LLM
 const llm = new ChatGoogleGenerativeAI({
@@ -27,7 +27,7 @@ const serpApiSearch = tool(
             });
 
             const organicResults = response.data.organic_results || [];
-            
+
             const formattedResults = organicResults.slice(0, count).map((result: any, index: number) => ({
                 position: index + 1,
                 title: result.title,
@@ -80,7 +80,7 @@ const serpApiSearch = tool(
 //             });
 
 //             const results = response.data.web?.results || [];
-            
+
 //             const formattedResults = results.map((result: any, index: number) => ({
 //                 position: index + 1,
 //                 title: result.title,
@@ -115,8 +115,8 @@ const serpApiSearch = tool(
 // );
 
 const webScraper = tool(
-    async({ url, extractType = "full" }: { url: string; extractType?: "full" | "title" | "summary" })=>{
-        try{
+    async ({ url, extractType = "full" }: { url: string; extractType?: "full" | "title" | "summary" }) => {
+        try {
             const result = await scrapeWebsite({
                 url,
                 extractType,
@@ -125,7 +125,7 @@ const webScraper = tool(
                 removeElements: ['script', 'style', 'nav', 'footer', 'ads', 'iframe']
             });
 
-            if(!result.success){
+            if (!result.success) {
                 return JSON.stringify({
                     url,
                     success: false,
@@ -146,7 +146,7 @@ const webScraper = tool(
                 }
             }, null, 2);
 
-        }catch(error: any){
+        } catch (error: any) {
             return JSON.stringify({
                 url,
                 success: false,
@@ -175,7 +175,7 @@ const checkTemporalConsistency = tool(
             needsExternalVerification: needsVerification,
             recommendation: ""
         };
-        
+
         if (dates.length === 0) {
             analysis.recommendation = "No temporal claims detected";
             return JSON.stringify(analysis);
@@ -194,7 +194,7 @@ const checkTemporalConsistency = tool(
         for (let i = 0; i < parsedDates.length - 1; i++) {
             const current = parsedDates[i].parsed!;
             const next = parsedDates[i + 1].parsed!;
-            
+
             if (current > next) {
                 analysis.inconsistencies.push(
                     `Timeline conflict: "${parsedDates[i].original}" occurs after "${parsedDates[i + 1].original}"`
@@ -217,8 +217,8 @@ const checkTemporalConsistency = tool(
         if (needsVerification) {
             analysis.recommendation = "Use serpApiSearch to verify these dates against news sources";
         } else {
-            analysis.recommendation = analysis.consistent 
-                ? "Dates are internally consistent" 
+            analysis.recommendation = analysis.consistent
+                ? "Dates are internally consistent"
                 : "Found temporal inconsistencies - claim may be false";
         }
 
@@ -253,7 +253,7 @@ const detectLogicalFallacies = tool(
         }
 
         // Appeal to Authority (without evidence)
-        if (/\b(experts? say|scientists? (say|agree|confirm)|studies show|research proves)\b/i.test(claim) && 
+        if (/\b(experts? say|scientists? (say|agree|confirm)|studies show|research proves)\b/i.test(claim) &&
             !claim.match(/https?:\/\//)) {
             fallacies.detected.push({
                 type: "Appeal to Authority",
@@ -281,7 +281,7 @@ const detectLogicalFallacies = tool(
         }
 
         // Slippery Slope
-        if (/\bif .+ then .+ (will|would|must).+/i.test(claim) && 
+        if (/\bif .+ then .+ (will|would|must).+/i.test(claim) &&
             claim.split(' ').length > 20) {
             fallacies.detected.push({
                 type: "Slippery Slope",
@@ -368,9 +368,9 @@ const checkInternalContradictions = tool(
                 for (let j = i + 1; j < statements.length; j++) {
                     const s1 = statements[i].toLowerCase();
                     const s2 = statements[j].toLowerCase();
-                    
+
                     // Check for direct negation between statements
-                    if (s1.includes('not') !== s2.includes('not') && 
+                    if (s1.includes('not') !== s2.includes('not') &&
                         s1.replace(/not /g, '') === s2.replace(/not /g, '')) {
                         contradictions.found.push({
                             contradiction: `Contradictory statements: "${statements[i]}" vs "${statements[j]}"`,
@@ -382,8 +382,8 @@ const checkInternalContradictions = tool(
         }
 
         contradictions.hasContradictions = contradictions.found.length > 0;
-        contradictions.needsContextVerification = contradictions.hasContradictions && 
-                                                  contradictions.found.some(c => c.confidence < 0.8);
+        contradictions.needsContextVerification = contradictions.hasContradictions &&
+            contradictions.found.some(c => c.confidence < 0.8);
 
         return JSON.stringify(contradictions);
     },
@@ -398,7 +398,7 @@ const checkInternalContradictions = tool(
 );
 
 const tools = [
-    serpApiSearch, 
+    serpApiSearch,
     // braveSearch,
     webScraper,
     checkTemporalConsistency,
@@ -442,7 +442,7 @@ const LogicConsistencyState = Annotation.Root({
         searchResults: any[];
         scrapedContent: any[];
     }>({
-        reducer: (x, y) => ({ 
+        reducer: (x, y) => ({
             searchResults: [...(x.searchResults || []), ...(y.searchResults || [])],
             scrapedContent: [...(x.scrapedContent || []), ...(y.scrapedContent || [])]
         }),
@@ -472,9 +472,9 @@ const LogicConsistencyState = Annotation.Root({
 
 //type safe check
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 //nodes
@@ -509,20 +509,20 @@ async function analyzeLogic(state: typeof LogicConsistencyState.State) {
 
 async function processToolResults(state: typeof LogicConsistencyState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
     const searchResults: any[] = [];
     const scrapedContent: any[] = [];
-    
+
     for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
         const observation = await (tool as any).invoke(toolCall);  //A QUICK FIX -> as any for tool -> Sit and fix later!
         result.push(observation);
-        
+
         // Track search and scrape results
         try {
             const parsed = JSON.parse(observation.content as string);
@@ -535,8 +535,8 @@ async function processToolResults(state: typeof LogicConsistencyState.State) {
             // Ignore parsing errors for tracking
         }
     }
-    
-    return { 
+
+    return {
         messages: result,
         externalContext: {
             searchResults,
@@ -577,15 +577,15 @@ async function extractVerdict(state: typeof LogicConsistencyState.State) {
     ]);
 
     try {
-        const content = typeof verdictMessage.content === 'string' 
-            ? verdictMessage.content 
+        const content = typeof verdictMessage.content === 'string'
+            ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const verdict = JSON.parse(jsonStr);
-        
+
         return {
             logicScore: verdict.logicScore ?? 0.5,
             isConsistent: verdict.isConsistent ?? true,
@@ -611,24 +611,24 @@ async function extractVerdict(state: typeof LogicConsistencyState.State) {
 
 async function shouldContinue(state: typeof LogicConsistencyState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage) return END;
-    
+
     if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
+
     //check if we've processed tools and need verdict
     const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
     if (hasToolResults && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     //if no tools were called at all, extract verdict
     if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     return END;
 }
 
@@ -653,7 +653,7 @@ export { logicConsistencyAgent, LogicConsistencyState };
 //testing
 async function testLogicConsistencyAgent() {
     console.log("🔍 Testing Logic & Consistency Agent with SerpAPI\n");
-    
+
     const testClaims = [
         {
             name: "Temporal Inconsistency",
@@ -678,12 +678,12 @@ async function testLogicConsistencyAgent() {
         console.log(`Test: ${testCase.name}`);
         console.log(`${"=".repeat(70)}`);
         console.log(`Claim: "${testCase.claim}"\n`);
-        
+
         const result = await logicConsistencyAgent.invoke({
             claim: testCase.claim,
             messages: []
         });
-        
+
         console.log("📊 Analysis Results:");
         console.log(`  Logic Score: ${result.logicScore.toFixed(2)}`);
         console.log(`  Confidence: ${result.confidence.toFixed(2)}`);
@@ -693,7 +693,7 @@ async function testLogicConsistencyAgent() {
         console.log(`  Contradictions: ${result.contradictions.join(', ') || 'None'}`);
         console.log(`  Flagged Issues: ${result.flaggedIssues.join(', ') || 'None'}`);
         console.log(`\n  Explanation: ${result.explanation}`);
-        
+
         if (result.externalContext.searchResults.length > 0) {
             console.log(`\n  🔍 External Sources Found: ${result.externalContext.searchResults.length}`);
         }

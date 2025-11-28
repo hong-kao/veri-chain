@@ -16,7 +16,6 @@ export interface ClaimMetadata {
     normalizedText: string;
     platforms: string[];
     claimType?: string;
-    urls?: string[];
 }
 
 interface LogicAgentOutput {

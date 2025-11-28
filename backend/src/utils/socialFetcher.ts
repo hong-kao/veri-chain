@@ -1,6 +1,6 @@
 // src/utils/socialFetcher.ts
 import axios from 'axios';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 
 export interface SocialPost {
     id: string;
@@ -106,7 +106,7 @@ export async function searchRedditPosts(query: string, limit: number = 25): Prom
 
         for (const child of response.data.data.children || []) {
             const post = child.data;
-            
+
             subreddits.add(post.subreddit);
 
             posts.push({
@@ -589,11 +589,11 @@ export function calculatePropagationMetrics(posts: SocialPost[]): {
 
     const authors = new Set(posts.map(p => p.author));
     const platforms = Array.from(new Set(posts.map(p => p.platform)));
-    
+
     const timestamps = posts.map(p => p.createdAt.getTime()).sort((a, b) => a - b);
     const timeSpan = (timestamps[timestamps.length - 1] - timestamps[0]) / (1000 * 60 * 60); // hours
 
-    const totalEngagement = posts.reduce((sum, p) => 
+    const totalEngagement = posts.reduce((sum, p) =>
         sum + p.engagement.likes + p.engagement.comments + p.engagement.shares, 0
     );
     const avgEngagement = totalEngagement / posts.length;
@@ -633,7 +633,7 @@ export function calculatePropagationMetrics(posts: SocialPost[]): {
     }
 
     // Check for very new accounts
-    const newAccounts = posts.filter(p => 
+    const newAccounts = posts.filter(p =>
         p.metadata.accountAge !== undefined && p.metadata.accountAge < 30
     ).length;
     if (newAccounts > posts.length * 0.5) {

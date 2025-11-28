@@ -2,7 +2,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -21,7 +21,7 @@ const hiveDetectAIImage = tool(
     async ({ imageUrl, imageFile }: { imageUrl?: string; imageFile?: string }) => {
         try {
             const formData = new FormData();
-            
+
             if (imageFile) {
                 // Local file
                 formData.append('media', fs.createReadStream(imageFile));
@@ -45,7 +45,7 @@ const hiveDetectAIImage = tool(
             );
 
             const result = response.data;
-            
+
             // Extract AI-generated detection results
             const aiGenerated = result.status?.[0]?.response?.output?.find(
                 (output: any) => output.name === 'ai_generated_media'
@@ -83,7 +83,7 @@ const hiveDetectDeepfakeVideo = tool(
     async ({ videoUrl, videoFile }: { videoUrl?: string; videoFile?: string }) => {
         try {
             const formData = new FormData();
-            
+
             if (videoFile) {
                 formData.append('media', fs.createReadStream(videoFile));
             } else if (videoUrl) {
@@ -106,7 +106,7 @@ const hiveDetectDeepfakeVideo = tool(
             );
 
             const result = response.data;
-            
+
             // Extract deepfake detection results
             const deepfake = result.status?.[0]?.response?.output?.find(
                 (output: any) => output.name === 'deepfake'
@@ -153,7 +153,7 @@ const hiveDetectAIAudio = tool(
     async ({ audioUrl, audioFile }: { audioUrl?: string; audioFile?: string }) => {
         try {
             const formData = new FormData();
-            
+
             if (audioFile) {
                 formData.append('media', fs.createReadStream(audioFile));
             } else if (audioUrl) {
@@ -176,7 +176,7 @@ const hiveDetectAIAudio = tool(
             );
 
             const result = response.data;
-            
+
             // Extract AI audio detection results
             const aiGenerated = result.status?.[0]?.response?.output?.find(
                 (output: any) => output.name === 'ai_generated_audio'
@@ -218,7 +218,7 @@ const sightengineDetectAIImage = tool(
             formData.append('api_user', env.SIGHTENGINE_API_USER || '');
             formData.append('api_secret', env.SIGHTENGINE_API_SECRET || '');
             formData.append('models', 'genai');
-            
+
             if (imageFile) {
                 formData.append('media', fs.createReadStream(imageFile));
             } else if (imageUrl) {
@@ -227,7 +227,7 @@ const sightengineDetectAIImage = tool(
                 throw new Error('Either imageUrl or imageFile must be provided');
             }
 
-            const endpoint = imageFile 
+            const endpoint = imageFile
                 ? 'https://api.sightengine.com/1.0/check.json'
                 : 'https://api.sightengine.com/1.0/check.json';
 
@@ -288,12 +288,12 @@ const sightengineDetectAIVideo = tool(
 
             // Aggregate frame results
             const frames = result.data?.frames || [];
-            const aiGeneratedFrames = frames.filter((frame: any) => 
+            const aiGeneratedFrames = frames.filter((frame: any) =>
                 frame.type?.ai_generated === 'ai'
             );
 
             const avgConfidence = aiGeneratedFrames.length > 0
-                ? aiGeneratedFrames.reduce((sum: number, frame: any) => 
+                ? aiGeneratedFrames.reduce((sum: number, frame: any) =>
                     sum + (frame.type?.ai_generated_prob || 0), 0) / aiGeneratedFrames.length
                 : 0;
 
@@ -333,7 +333,7 @@ const sightengineDetectAIAudio = tool(
             formData.append('api_user', env.SIGHTENGINE_API_USER || '');
             formData.append('api_secret', env.SIGHTENGINE_API_SECRET || '');
             formData.append('models', 'genai');
-            
+
             if (audioFile) {
                 formData.append('media', fs.createReadStream(audioFile));
             } else if (audioUrl) {
@@ -395,7 +395,7 @@ const reverseImageSearch = tool(
             });
 
             const results = response.data;
-            
+
             const matchingImages = results.image_results || [];
             const similarImages = results.inline_images || [];
 
@@ -414,7 +414,7 @@ const reverseImageSearch = tool(
                     link: img.link,
                     title: img.title
                 })),
-                analysis: matchingImages.length > 0 
+                analysis: matchingImages.length > 0
                     ? `Image found ${matchingImages.length} times online - may indicate reuse or misattribution`
                     : 'No significant matches found - image may be original'
             }, null, 2);
@@ -502,7 +502,7 @@ const llmWithTools = llm.bindTools(tools);
 
 const MediaForensicsState = Annotation.Root({
     ...MessagesAnnotation.spec,
-    
+
     // Input
     claim: Annotation<string>({
         reducer: (x, y) => y ?? x,
@@ -515,7 +515,7 @@ const MediaForensicsState = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => []
     }),
-    
+
     // Analysis outputs
     imageAnalysis: Annotation<Array<{
         url: string;
@@ -546,7 +546,7 @@ const MediaForensicsState = Annotation.Root({
         reducer: (x, y) => [...x, ...y],
         default: () => []
     }),
-    
+
     // Verdict
     mediaAuthenticityScore: Annotation<number>({
         reducer: (x, y) => y ?? x,
@@ -571,9 +571,9 @@ const MediaForensicsState = Annotation.Root({
 });
 
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 
@@ -611,9 +611,9 @@ Focus on:
 - Identifying specific manipulation types (deepfake, AI generation, reuse)`;
 
     const mediaInfo = state.mediaUrls.length > 0
-        ? `\n\nMedia to analyze:\n${state.mediaUrls.map((media, i) => 
+        ? `\n\nMedia to analyze:\n${state.mediaUrls.map((media, i) =>
             `${i + 1}. [${media.type.toUpperCase()}] ${media.url}`
-          ).join('\n')}`
+        ).join('\n')}`
         : "\n\nNo media URLs provided.";
 
     return {
@@ -626,25 +626,25 @@ Focus on:
 
 async function processToolResults(state: typeof MediaForensicsState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
     const imageAnalysis: any[] = [];
     const videoAnalysis: any[] = [];
     const audioAnalysis: any[] = [];
-    
+
     for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
         const observation = await (tool as any).invoke(toolCall);
         result.push(observation);
-        
+
         // Parse and categorize results
         try {
             const parsed = JSON.parse(observation.content as string);
-            
+
             if (toolCall.name.includes('Image')) {
                 imageAnalysis.push({
                     url: parsed.source,
@@ -676,8 +676,8 @@ async function processToolResults(state: typeof MediaForensicsState.State) {
             // Ignore parsing errors
         }
     }
-    
-    return { 
+
+    return {
         messages: result,
         imageAnalysis,
         videoAnalysis,
@@ -736,15 +736,15 @@ Be precise and objective.`;
     ]);
 
     try {
-        const content = typeof verdictMessage.content === 'string' 
-            ? verdictMessage.content 
+        const content = typeof verdictMessage.content === 'string'
+            ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const verdict = JSON.parse(jsonStr);
-        
+
         return {
             mediaAuthenticityScore: verdict.mediaAuthenticityScore ?? 0.5,
             hasManipulation: verdict.hasManipulation ?? false,
@@ -768,22 +768,22 @@ Be precise and objective.`;
 
 async function shouldContinue(state: typeof MediaForensicsState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage) return END;
-    
+
     if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
+
     const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
     if (hasToolResults && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     return END;
 }
 
@@ -796,7 +796,7 @@ const mediaForensicsAgent = new StateGraph(MediaForensicsState)
         "processToolResults": "processToolResults",
         "extractVerdict": "extractVerdict",
         [END]: END
-        })
+    })
     .addEdge("processToolResults", "analyzeMediaForensics")
     .addEdge("extractVerdict", END)
     .compile();
@@ -844,7 +844,7 @@ async function testMediaForensicsAgent() {
             mediaUrls: []
         }
     ];
-    
+
     for (const testCase of testCases) {
         console.log(`\n${"=".repeat(70)}`);
         console.log(`Test: ${testCase.name}`);
@@ -857,28 +857,28 @@ async function testMediaForensicsAgent() {
             });
         }
         console.log();
-        
+
         try {
             const result = await mediaForensicsAgent.invoke({
                 claim: testCase.claim,
                 mediaUrls: testCase.mediaUrls,
                 messages: []
             });
-    
+
             console.log("\n📊 MEDIA FORENSICS ANALYSIS RESULTS:");
             console.log("━".repeat(70));
-            
+
             console.log(`\n🎯 Media Authenticity Score: ${(result.mediaAuthenticityScore * 100).toFixed(1)}%`);
             console.log(`🎯 Confidence: ${(result.confidence * 100).toFixed(1)}%`);
             console.log(`🚨 Has Manipulation: ${result.hasManipulation ? '❌ YES' : '✅ NO'}`);
-            
+
             if (result.manipulationTypes.length > 0) {
                 console.log(`\n⚠️  Manipulation Types Detected:`);
                 result.manipulationTypes.forEach((type: string) => {
                     console.log(`   - ${type}`);
                 });
             }
-    
+
             if (result.imageAnalysis && result.imageAnalysis.length > 0) {
                 console.log(`\n🖼️  Image Analysis (${result.imageAnalysis.length}):`);
                 result.imageAnalysis.forEach((img: any, idx: number) => {
@@ -891,7 +891,7 @@ async function testMediaForensicsAgent() {
                     }
                 });
             }
-    
+
             if (result.videoAnalysis && result.videoAnalysis.length > 0) {
                 console.log(`\n🎥 Video Analysis (${result.videoAnalysis.length}):`);
                 result.videoAnalysis.forEach((vid: any, idx: number) => {
@@ -902,7 +902,7 @@ async function testMediaForensicsAgent() {
                     console.log(`      Provider: ${vid.provider}`);
                 });
             }
-    
+
             if (result.audioAnalysis && result.audioAnalysis.length > 0) {
                 console.log(`\n🔊 Audio Analysis (${result.audioAnalysis.length}):`);
                 result.audioAnalysis.forEach((aud: any, idx: number) => {
@@ -912,12 +912,12 @@ async function testMediaForensicsAgent() {
                     console.log(`      Provider: ${aud.provider}`);
                 });
             }
-    
+
             console.log(`\n📝 Explanation:`);
             console.log(`   ${result.explanation}`);
-    
+
             console.log(`\n🔧 Debug - Tool Calls Made:`);
-            const toolMessages = result.messages.filter((m: BaseMessage) => 
+            const toolMessages = result.messages.filter((m: BaseMessage) =>
                 m._getType() === 'ai' && hasToolCalls(m)
             );
             if (toolMessages.length > 0) {
@@ -929,23 +929,23 @@ async function testMediaForensicsAgent() {
             } else {
                 console.log(`   No tool calls made`);
             }
-    
+
             console.log(`\n✅ Test completed successfully`);
-            
+
         } catch (error: any) {
             console.error(`\n❌ Test failed:`, error.message);
             if (error.response?.data) {
                 console.error('API Error Details:', JSON.stringify(error.response.data, null, 2));
             }
         }
-        
+
         // Delay between tests
         if (testCase !== testCases[testCases.length - 1]) {
             console.log(`\n⏳ Waiting 5 seconds before next test...`);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
-    
+
     console.log(`\n${"=".repeat(70)}`);
     console.log(`🎉 All tests completed!`);
     console.log(`${"=".repeat(70)}\n`);

@@ -1,7 +1,7 @@
 import { tool } from '@langchain/core/tools'
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph"
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -12,7 +12,7 @@ const llm = new ChatGoogleGenerativeAI({
 });
 
 const multiply = tool(
-    async ({ a, b }: { a: number, b: number}) => {
+    async ({ a, b }: { a: number, b: number }) => {
         return a * b;
     },
     {
@@ -26,7 +26,7 @@ const multiply = tool(
 )
 
 const add = tool(
-    async ({ a, b }: { a: number, b: number}) => {
+    async ({ a, b }: { a: number, b: number }) => {
         return a + b;
     },
     {
@@ -40,7 +40,7 @@ const add = tool(
 )
 
 const divide = tool(
-    async ({ a, b }: { a: number, b: number}) => {
+    async ({ a, b }: { a: number, b: number }) => {
         return a / b;
     },
     {
@@ -71,9 +71,9 @@ const StateAnnotation = Annotation.Root({
 
 //Type safe check - if message has tool_calls
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 
@@ -81,44 +81,44 @@ function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_cal
 //First Node
 async function llmCall(state: typeof StateAnnotation.State) {
     return {
-      messages: await llmWithTools.invoke([
-        new SystemMessage(
-          "You are a helpful assistant tasked with performing arithmetic on a set of inputs."
-        ),
-        ...state.messages,
-      ]),
-      llmCalls: (state.llmCalls ?? 0) + 1,
+        messages: await llmWithTools.invoke([
+            new SystemMessage(
+                "You are a helpful assistant tasked with performing arithmetic on a set of inputs."
+            ),
+            ...state.messages,
+        ]),
+        llmCalls: (state.llmCalls ?? 0) + 1,
     };
-  }
+}
 
 //Second node - Actually calls tools
 async function toolNode(state: typeof StateAnnotation.State) {
     const lastMessage = state.messages.at(-1);
-  
+
     //check if last message exists and has tool_calls
-    if(!lastMessage || !hasToolCalls(lastMessage)) {
+    if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-  
+
     const result: ToolMessage[] = [];
-    for(const toolCall of lastMessage.tool_calls) {
-      const tool = toolsByName[toolCall.name];
-      const observation = await tool.invoke(toolCall);
-      result.push(observation);
+    for (const toolCall of lastMessage.tool_calls) {
+        const tool = toolsByName[toolCall.name];
+        const observation = await tool.invoke(toolCall);
+        result.push(observation);
     }
-  
-    return { 
-        messages: result 
+
+    return {
+        messages: result
     };
 }
 
 async function shouldContinue(state: typeof StateAnnotation.State) {
     const lastMessage = state.messages.at(-1);
 
-    if(!lastMessage) return END;
+    if (!lastMessage) return END;
 
     //check if the message has tool_calls property and if it has any tool calls
-    if(hasToolCalls(lastMessage)) {
+    if (hasToolCalls(lastMessage)) {
         return "toolNode";
     }
 
@@ -127,12 +127,12 @@ async function shouldContinue(state: typeof StateAnnotation.State) {
 }
 
 const agent = new StateGraph(StateAnnotation)
-  .addNode("llmCall", llmCall)
-  .addNode("toolNode", toolNode)
-  .addEdge(START, "llmCall")
-  .addConditionalEdges("llmCall", shouldContinue, ["toolNode", END])
-  .addEdge("toolNode", "llmCall")
-  .compile();
+    .addNode("llmCall", llmCall)
+    .addNode("toolNode", toolNode)
+    .addEdge(START, "llmCall")
+    .addConditionalEdges("llmCall", shouldContinue, ["toolNode", END])
+    .addEdge("toolNode", "llmCall")
+    .compile();
 
 //Invoke
 const result = await agent.invoke({

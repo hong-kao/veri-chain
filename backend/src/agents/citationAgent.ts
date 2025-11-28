@@ -1,7 +1,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -13,8 +13,8 @@ const llm = new ChatGoogleGenerativeAI({
 });
 
 const serpApiSearch = tool(
-    async({ query, count = 10 }: { query: string; count?: number })=>{
-        try{
+    async ({ query, count = 10 }: { query: string; count?: number }) => {
+        try {
             const response = await axios.get('https://serpapi.com/search', {
                 params: {
                     q: query,
@@ -25,8 +25,8 @@ const serpApiSearch = tool(
             });
 
             const organicResults = response.data.organic_results || [];
-            
-            const formattedResults = organicResults.slice(0, count).map((result: any, index: number)=>({
+
+            const formattedResults = organicResults.slice(0, count).map((result: any, index: number) => ({
                 position: index + 1,
                 title: result.title,
                 url: result.link,
@@ -41,7 +41,7 @@ const serpApiSearch = tool(
                 results: formattedResults,
                 relatedQuestions: response.data.related_questions?.slice(0, 3) || []
             }, null, 2);
-        }catch(error: any){
+        } catch (error: any) {
             console.error('SerpAPI Search Error:', error.response?.data || error.message);
             return JSON.stringify({
                 error: 'SerpAPI Search failed',
@@ -64,7 +64,7 @@ const serpApiSearch = tool(
 // const webScraper = tool()
 
 const searchFactCheckSites = tool(
-    async({ claim }: { claim: string })=>{
+    async ({ claim }: { claim: string }) => {
         const factCheckDomains = [
             'snopes.com',
             'factcheck.org',
@@ -76,14 +76,14 @@ const searchFactCheckSites = tool(
             'checkyourfact.com'
         ];
 
-        const queries = factCheckDomains.map(domain=>
+        const queries = factCheckDomains.map(domain =>
             `site:${domain} ${claim.slice(0, 100)}`
         );
 
         const results = [];
-        
-        try{
-            for(const query of queries.slice(0, 3)){
+
+        try {
+            for (const query of queries.slice(0, 3)) {
                 const response = await axios.get('https://serpapi.com/search', {
                     params: {
                         q: query,
@@ -94,7 +94,7 @@ const searchFactCheckSites = tool(
                 });
 
                 const organicResults = response.data.organic_results || [];
-                results.push(...organicResults.map((result: any)=>({
+                results.push(...organicResults.map((result: any) => ({
                     title: result.title,
                     url: result.link,
                     snippet: result.snippet,
@@ -109,7 +109,7 @@ const searchFactCheckSites = tool(
                 totalFound: results.length,
                 domains: factCheckDomains.slice(0, 3)
             }, null, 2);
-        }catch(error: any){
+        } catch (error: any) {
             console.error('Fact-check search failed:', error.message);
             return JSON.stringify({
                 error: 'Fact-check site search failed',
@@ -129,7 +129,7 @@ const searchFactCheckSites = tool(
 
 
 const analyzeSourceQuality = tool(
-    async({ url, content, publishDate }: { url: string; content: string; publishDate?: string })=>{
+    async ({ url, content, publishDate }: { url: string; content: string; publishDate?: string }) => {
         const analysis = {
             url,
             sourceType: "unknown" as string,
@@ -146,64 +146,64 @@ const analyzeSourceQuality = tool(
         const contentLower = content.toLowerCase();
 
         // Fact-check sites
-        if(urlLower.match(/snopes|factcheck\.org|politifact|reuters.*fact-check|apnews.*fact-check|fullfact|africacheck/)){
+        if (urlLower.match(/snopes|factcheck\.org|politifact|reuters.*fact-check|apnews.*fact-check|fullfact|africacheck/)) {
             analysis.sourceType = "fact-check";
             analysis.isFactCheckSite = true;
             analysis.credibilityScore = 0.9;
             analysis.factors.push("Professional fact-checking organization");
         }
         // News outlets
-        else if(urlLower.match(/nytimes|washingtonpost|bbc|reuters|apnews|theguardian|cnn|npr/)){
+        else if (urlLower.match(/nytimes|washingtonpost|bbc|reuters|apnews|theguardian|cnn|npr/)) {
             analysis.sourceType = "mainstream-news";
             analysis.credibilityScore = 0.8;
             analysis.factors.push("Established news organization");
         }
         // Academic/Gov
-        else if(urlLower.match(/\.edu|\.gov|nature\.com|science\.org|arxiv\.org/)){
+        else if (urlLower.match(/\.edu|\.gov|nature\.com|science\.org|arxiv\.org/)) {
             analysis.sourceType = "academic-gov";
             analysis.credibilityScore = 0.85;
             analysis.factors.push("Academic or government source");
         }
         // Questionable
-        else if(urlLower.match(/wordpress|blogspot|medium\.com|substack/)){
+        else if (urlLower.match(/wordpress|blogspot|medium\.com|substack/)) {
             analysis.sourceType = "personal-blog";
             analysis.credibilityScore = 0.4;
             analysis.warnings.push("Personal blog - verify claims independently");
         }
         // Social media
-        else if(urlLower.match(/twitter|facebook|instagram|tiktok/)){
+        else if (urlLower.match(/twitter|facebook|instagram|tiktok/)) {
             analysis.sourceType = "social-media";
             analysis.credibilityScore = 0.3;
             analysis.warnings.push("Social media post - not a primary source");
         }
 
         // Check for author
-        if(contentLower.match(/by [a-z]+ [a-z]+|author:|written by/)){
+        if (contentLower.match(/by [a-z]+ [a-z]+|author:|written by/)) {
             analysis.hasAuthor = true;
             analysis.credibilityScore += 0.05;
-        }else{
+        } else {
             analysis.warnings.push("No clear author attribution");
         }
 
         // Check for citations
         const citationCount = (content.match(/https?:\/\/|doi:|according to|study published/gi) || []).length;
-        if(citationCount >= 3){
+        if (citationCount >= 3) {
             analysis.hasCitations = true;
             analysis.credibilityScore += 0.1;
             analysis.factors.push(`Contains ${citationCount} citations/references`);
-        }else{
+        } else {
             analysis.warnings.push("Few or no citations to external sources");
         }
 
         // Check freshness
-        if(publishDate){
+        if (publishDate) {
             const date = new Date(publishDate);
             const now = new Date();
             const daysDiff = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
-            
-            if(daysDiff < 30){
+
+            if (daysDiff < 30) {
                 analysis.factors.push("Recently published");
-            }else if(daysDiff > 730){
+            } else if (daysDiff > 730) {
                 analysis.warnings.push("Published over 2 years ago - may be outdated");
                 analysis.credibilityScore -= 0.1;
             }
@@ -225,7 +225,7 @@ const analyzeSourceQuality = tool(
 );
 
 const extractCitedSources = tool(
-    async({ content }: { content: string })=>{
+    async ({ content }: { content: string }) => {
         const sources = {
             urls: [] as string[],
             quotedSources: [] as string[],
@@ -241,21 +241,21 @@ const extractCitedSources = tool(
         // Extract "according to X" patterns
         const accordingToRegex = /according to ([^,.]+)/gi;
         const accordingMatches = content.matchAll(accordingToRegex);
-        for(const match of accordingMatches){
+        for (const match of accordingMatches) {
             sources.quotedSources.push(match[1].trim());
         }
 
         // Extract study references
         const studyRegex = /(study|research|paper|report) (?:published in|from|by) ([^,.]+)/gi;
         const studyMatches = content.matchAll(studyRegex);
-        for(const match of studyMatches){
+        for (const match of studyMatches) {
             sources.studies.push(match[2].trim());
         }
 
         // Extract authorities/experts
         const expertRegex = /(Dr\.|Professor|expert) ([A-Z][a-z]+ [A-Z][a-z]+)/g;
         const expertMatches = content.matchAll(expertRegex);
-        for(const match of expertMatches){
+        for (const match of expertMatches) {
             sources.authorities.push(`${match[1]} ${match[2]}`);
         }
 
@@ -282,14 +282,14 @@ const tools = [
     extractCitedSources
 ];
 
-const toolsByName = Object.fromEntries(tools.map((tool)=>[tool.name, tool]));
+const toolsByName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
 const llmWithTools = llm.bindTools(tools);
 
 const CitationEvidenceState = Annotation.Root({
     ...MessagesAnnotation.spec,
     claim: Annotation<string>({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>""
+        reducer: (x, y) => y ?? x,
+        default: () => ""
     }),
     supportingEvidence: Annotation<Array<{
         url: string;
@@ -299,8 +299,8 @@ const CitationEvidenceState = Annotation.Root({
         sourceType: string;
         publishDate?: string;
     }>>({
-        reducer: (x, y)=>[...x, ...y],
-        default: ()=>[]
+        reducer: (x, y) => [...x, ...y],
+        default: () => []
     }),
     contradictingEvidence: Annotation<Array<{
         url: string;
@@ -310,8 +310,8 @@ const CitationEvidenceState = Annotation.Root({
         sourceType: string;
         publishDate?: string;
     }>>({
-        reducer: (x, y)=>[...x, ...y],
-        default: ()=>[]
+        reducer: (x, y) => [...x, ...y],
+        default: () => []
     }),
     factCheckResults: Annotation<Array<{
         url: string;
@@ -319,8 +319,8 @@ const CitationEvidenceState = Annotation.Root({
         verdict: string;
         source: string;
     }>>({
-        reducer: (x, y)=>[...x, ...y],
-        default: ()=>[]
+        reducer: (x, y) => [...x, ...y],
+        default: () => []
     }),
     citedSources: Annotation<{
         urls: string[];
@@ -328,43 +328,43 @@ const CitationEvidenceState = Annotation.Root({
         studies: string[];
         authorities: string[];
     }>({
-        reducer: (x, y)=>({
+        reducer: (x, y) => ({
             urls: [...x.urls, ...y.urls],
             quotedSources: [...x.quotedSources, ...y.quotedSources],
             studies: [...x.studies, ...y.studies],
             authorities: [...x.authorities, ...y.authorities]
         }),
-        default: ()=>({ urls: [], quotedSources: [], studies: [], authorities: [] })
+        default: () => ({ urls: [], quotedSources: [], studies: [], authorities: [] })
     }),
     evidenceScore: Annotation<number>({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>0.5
+        reducer: (x, y) => y ?? x,
+        default: () => 0.5
     }),
     confidence: Annotation<number>({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>0.5
+        reducer: (x, y) => y ?? x,
+        default: () => 0.5
     }),
     verdict: Annotation<"supported" | "contradicted" | "mixed" | "insufficient">({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>"insufficient"
+        reducer: (x, y) => y ?? x,
+        default: () => "insufficient"
     }),
     explanation: Annotation<string>({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>""
+        reducer: (x, y) => y ?? x,
+        default: () => ""
     }),
     topSources: Annotation<string[]>({
-        reducer: (x, y)=>y ?? x,
-        default: ()=>[]
+        reducer: (x, y) => y ?? x,
+        default: () => []
     })
 });
 
-function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] }{
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
-async function searchEvidence(state: typeof CitationEvidenceState.State){
+async function searchEvidence(state: typeof CitationEvidenceState.State) {
     const systemPrompt = `You are the Citation & Evidence Agent for VeriChain.
 
                 Your mission: Find credible external sources that either support or contradict the claim.
@@ -392,25 +392,25 @@ async function searchEvidence(state: typeof CitationEvidenceState.State){
     };
 }
 
-async function processToolResults(state: typeof CitationEvidenceState.State){
+async function processToolResults(state: typeof CitationEvidenceState.State) {
     const lastMessage = state.messages.at(-1);
-    
-    if(!lastMessage || !hasToolCalls(lastMessage)){
+
+    if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
-    
-    for(const toolCall of lastMessage.tool_calls){
+
+    for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
         const observation = await (tool as any).invoke(toolCall);
         result.push(observation);
     }
-    
+
     return { messages: result };
 }
 
-async function synthesizeEvidence(state: typeof CitationEvidenceState.State){
+async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
     const synthesisPrompt = `Based on all the evidence you've gathered, synthesize your findings.
 
             Analyze:
@@ -477,16 +477,16 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State){
         new HumanMessage(synthesisPrompt)
     ]);
 
-    try{
-        const content = typeof synthesisMessage.content === 'string' 
-            ? synthesisMessage.content 
+    try {
+        const content = typeof synthesisMessage.content === 'string'
+            ? synthesisMessage.content
             : JSON.stringify(synthesisMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const synthesis = JSON.parse(jsonStr);
-        
+
         return {
             supportingEvidence: synthesis.supportingEvidence || [],
             contradictingEvidence: synthesis.contradictingEvidence || [],
@@ -498,7 +498,7 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State){
             explanation: synthesis.explanation || "No explanation provided",
             topSources: synthesis.topSources || []
         };
-    }catch(error){
+    } catch (error) {
         console.error("Failed to parse synthesis:", error);
         return {
             evidenceScore: 0.5,
@@ -509,24 +509,24 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State){
     }
 }
 
-async function shouldContinue(state: typeof CitationEvidenceState.State){
+async function shouldContinue(state: typeof CitationEvidenceState.State) {
     const lastMessage = state.messages.at(-1);
-    
-    if(!lastMessage) return END;
-    
-    if(hasToolCalls(lastMessage)){
+
+    if (!lastMessage) return END;
+
+    if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
-    const hasToolResults = state.messages.some(msg=>msg._getType() === 'tool');
-    if(hasToolResults && !state.explanation){
+
+    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
+    if (hasToolResults && !state.explanation) {
         return "synthesizeEvidence";
     }
-    
-    if(!hasToolResults && state.messages.length >= 2 && !state.explanation){
+
+    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
         return "synthesizeEvidence";
     }
-    
+
     return END;
 }
 
@@ -547,9 +547,9 @@ const citationEvidenceAgent = new StateGraph(CitationEvidenceState)
 export { citationEvidenceAgent, CitationEvidenceState };
 
 //Testing
-async function testCitationEvidenceAgent(){
+async function testCitationEvidenceAgent() {
     console.log("🔍 Testing Citation & Evidence Agent\n");
-    
+
     const testClaims = [
         {
             name: "Well-Known Fact-Checked Claim",
@@ -569,17 +569,17 @@ async function testCitationEvidenceAgent(){
         }
     ];
 
-    for(const testCase of testClaims){
+    for (const testCase of testClaims) {
         console.log(`\n${"=".repeat(70)}`);
         console.log(`Test: ${testCase.name}`);
         console.log(`${"=".repeat(70)}`);
         console.log(`Claim: "${testCase.claim}"\n`);
-        
+
         const result = await citationEvidenceAgent.invoke({
             claim: testCase.claim,
             messages: []
         });
-        
+
         console.log("📊 Evidence Analysis Results:");
         console.log(`  Evidence Score: ${result.evidenceScore.toFixed(2)}`);
         console.log(`  Confidence: ${result.confidence.toFixed(2)}`);
@@ -588,22 +588,22 @@ async function testCitationEvidenceAgent(){
         console.log(`  Contradicting Sources: ${result.contradictingEvidence.length}`);
         console.log(`  Fact-Checks Found: ${result.factCheckResults.length}`);
         console.log(`\n  Explanation: ${result.explanation}`);
-        
-        if(result.factCheckResults.length > 0){
+
+        if (result.factCheckResults.length > 0) {
             console.log(`\n  🔍 Fact-Check Results:`);
-            result.factCheckResults.forEach((fc, i)=>{
+            result.factCheckResults.forEach((fc, i) => {
                 console.log(`    ${i + 1}. [${fc.source}] ${fc.verdict}: ${fc.title}`);
                 console.log(`       ${fc.url}`);
             });
         }
-        
-        if(result.topSources.length > 0){
+
+        if (result.topSources.length > 0) {
             console.log(`\n  📄 Top Sources:`);
-            result.topSources.slice(0, 3).forEach((source, i)=>{
+            result.topSources.slice(0, 3).forEach((source, i) => {
                 console.log(`    ${i + 1}. ${source}`);
             });
         }
-        
+
         console.log(`\n  📚 Cited Sources Summary:`);
         console.log(`    URLs: ${result.citedSources.urls.length}`);
         console.log(`    Quoted Sources: ${result.citedSources.quotedSources.length}`);
@@ -612,6 +612,6 @@ async function testCitationEvidenceAgent(){
     }
 }
 
-if(import.meta.url === `file://${process.argv[1]}`){
+if (import.meta.url === `file://${process.argv[1]}`) {
     testCitationEvidenceAgent();
 }

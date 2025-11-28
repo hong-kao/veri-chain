@@ -31,4 +31,10 @@ export const env = {
     SIGHTENGINE_API_USER: process.env.SIGHTENGINE_API_USER,
     SIGHTENGINE_API_SECRET: process.env.SIGHTENGINE_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL || '',
+    RPC_URL: process.env.RPC_URL || "",
+    PRIVATE_KEY: process.env.PRIVATE_KEY || "",
+    CLAIM_REGISTRY_ADDRESS: process.env.CLAIM_REGISTRY_ADDRESS || "",
+    STAKING_VOTING_ADDRESS: process.env.STAKING_VOTING_ADDRESS || "",
+    NODEMAILER_USER: process.env.NODEMAILER_USER || "",
+    NODEMAILER_PASSWORD: process.env.NODEMAILER_PASSWORD || "",
 }

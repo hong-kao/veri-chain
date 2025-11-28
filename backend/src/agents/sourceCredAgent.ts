@@ -1,12 +1,12 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
 import axios from 'axios';
-import { scrapeWebsite } from '../utils/scraper';
+import { scrapeWebsite } from '../utils/scraper.js';
 
 const llm = new ChatGoogleGenerativeAI({
     apiKey: env.GEMINI_API_KEY || '',
@@ -27,7 +27,7 @@ const serpApiSearch = tool(
             });
 
             const organicResults = response.data.organic_results || [];
-            
+
             const formattedResults = organicResults.slice(0, count).map((result: any, index: number) => ({
                 position: index + 1,
                 title: result.title,
@@ -62,7 +62,7 @@ const serpApiSearch = tool(
 );
 
 const webScraper = tool(
-    async({ url, extractType = "full" }: { url: string; extractType?: "full" | "title" | "summary" }) => {
+    async ({ url, extractType = "full" }: { url: string; extractType?: "full" | "title" | "summary" }) => {
         try {
             const result = await scrapeWebsite({
                 url,
@@ -272,7 +272,7 @@ const checkAuthorCredibility = tool(
         // Check for credentials in author name
         const credentials = ['dr.', 'phd', 'md', 'professor', 'prof.'];
         const hasCredentials = credentials.some(cred => authorLower.includes(cred));
-        
+
         if (hasCredentials) {
             credibility.credibilityScore += 0.15;
             credibility.indicators.push("Author has academic/professional credentials");
@@ -289,10 +289,10 @@ const checkAuthorCredibility = tool(
         }
 
         // Check for citations/sources in content
-        const hasCitations = content.match(/\[[\d,\s]+\]/) || 
-                           content.match(/\(\d{4}\)/) || // year citations
-                           content.match(/according to/i) ||
-                           content.match(/study|research|paper/i);
+        const hasCitations = content.match(/\[[\d,\s]+\]/) ||
+            content.match(/\(\d{4}\)/) || // year citations
+            content.match(/according to/i) ||
+            content.match(/study|research|paper/i);
 
         if (hasCitations) {
             credibility.credibilityScore += 0.1;
@@ -358,7 +358,7 @@ const checkFactCheckingStatus = tool(
 
                 if (claimBusterResponse.data?.results?.[0]) {
                     status.claimBusterScore = claimBusterResponse.data.results[0].score;
-                    
+
                     if (status.claimBusterScore !== null) {
                         if (status.claimBusterScore > 0.5) {
                             status.analysis += `ClaimBuster score: ${status.claimBusterScore.toFixed(3)} (check-worthy claim). `;
@@ -387,9 +387,9 @@ const checkFactCheckingStatus = tool(
 
                 if (factCheckResponse.data?.claims && factCheckResponse.data.claims.length > 0) {
                     status.hasFactChecks = true;
-                    
+
                     const claims = factCheckResponse.data.claims.slice(0, 5); // Top 5 results
-                    
+
                     for (const claimData of claims) {
                         if (claimData.claimReview && claimData.claimReview.length > 0) {
                             for (const review of claimData.claimReview) {
@@ -406,19 +406,19 @@ const checkFactCheckingStatus = tool(
 
                     // Determine consensus based on verdicts
                     if (status.factCheckResults.length > 0) {
-                        const verdictLower = status.factCheckResults.map(r => 
+                        const verdictLower = status.factCheckResults.map(r =>
                             r.verdict.toLowerCase()
                         );
-                        
-                        const falseCount = verdictLower.filter(v => 
+
+                        const falseCount = verdictLower.filter(v =>
                             v.includes('false') || v.includes('fake') || v.includes('pants on fire')
                         ).length;
-                        
-                        const trueCount = verdictLower.filter(v => 
+
+                        const trueCount = verdictLower.filter(v =>
                             v.includes('true') || v.includes('correct') || v.includes('accurate')
                         ).length;
-                        
-                        const mixedCount = verdictLower.filter(v => 
+
+                        const mixedCount = verdictLower.filter(v =>
                             v.includes('mixed') || v.includes('mostly') || v.includes('half')
                         ).length;
 
@@ -452,14 +452,14 @@ const checkFactCheckingStatus = tool(
                 'usatoday.com/news/factcheck'
             ];
 
-            const foundFactCheckSources = sources.filter(url => 
+            const foundFactCheckSources = sources.filter(url =>
                 factCheckDomains.some(domain => url.toLowerCase().includes(domain))
             );
 
             if (foundFactCheckSources.length > 0) {
                 status.hasFactChecks = true;
                 status.analysis += `Found ${foundFactCheckSources.length} fact-checking source(s) in provided URLs. `;
-                
+
                 for (const url of foundFactCheckSources) {
                     const domain = factCheckDomains.find(d => url.toLowerCase().includes(d));
                     if (domain && !status.factCheckResults.some(r => r.url === url)) {
@@ -515,10 +515,10 @@ const checkFactCheckingStatus = tool(
 );
 
 const analyzePublicationQuality = tool(
-    async ({ url, content, metadata }: { 
-        url: string; 
-        content: string; 
-        metadata: { author?: string; publishDate?: string; wordCount: number } 
+    async ({ url, content, metadata }: {
+        url: string;
+        content: string;
+        metadata: { author?: string; publishDate?: string; wordCount: number }
     }) => {
         const quality = {
             url,
@@ -541,11 +541,11 @@ const analyzePublicationQuality = tool(
         if (metadata.publishDate) {
             quality.qualityScore += 0.05;
             quality.indicators.push("Has publication date");
-            
+
             try {
                 const pubDate = new Date(metadata.publishDate);
                 const daysSincePublish = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24);
-                
+
                 if (daysSincePublish < 7) {
                     quality.indicators.push("Recent publication (< 7 days old)");
                 } else if (daysSincePublish > 365 * 3) {
@@ -571,7 +571,7 @@ const analyzePublicationQuality = tool(
 
         // Content quality heuristics
         const contentLower = content.toLowerCase();
-        
+
         // Check for sources/citations
         const sourceIndicators = [
             /according to/gi,
@@ -580,7 +580,7 @@ const analyzePublicationQuality = tool(
             /reported/gi,
             /\b(said|stated|confirmed)\b/gi
         ];
-        const citationCount = sourceIndicators.reduce((sum, pattern) => 
+        const citationCount = sourceIndicators.reduce((sum, pattern) =>
             sum + (content.match(pattern)?.length || 0), 0
         );
 
@@ -597,7 +597,7 @@ const analyzePublicationQuality = tool(
             'shocking', 'unbelievable', 'amazing', 'you won\'t believe',
             'jaw-dropping', 'mind-blowing', 'stunning', 'outrageous'
         ];
-        const sensationalCount = sensationalWords.filter(word => 
+        const sensationalCount = sensationalWords.filter(word =>
             contentLower.includes(word)
         ).length;
 
@@ -616,12 +616,12 @@ const analyzePublicationQuality = tool(
         }
 
         quality.qualityScore = Math.max(0.0, Math.min(1.0, quality.qualityScore));
-        
-        quality.analysis = quality.qualityScore >= 0.7 
+
+        quality.analysis = quality.qualityScore >= 0.7
             ? "High-quality publication with strong journalistic standards"
             : quality.qualityScore >= 0.5
-            ? "Moderate quality - some concerns but generally acceptable"
-            : "Low quality - significant credibility concerns";
+                ? "Moderate quality - some concerns but generally acceptable"
+                : "Low quality - significant credibility concerns";
 
         return JSON.stringify(quality, null, 2);
     },
@@ -654,7 +654,7 @@ const llmWithTools = llm.bindTools(tools);
 
 const SourceCredibilityState = Annotation.Root({
     ...MessagesAnnotation.spec,
-    
+
     // Input
     claim: Annotation<string>({
         reducer: (x, y) => y ?? x,
@@ -664,7 +664,7 @@ const SourceCredibilityState = Annotation.Root({
         reducer: (x, y) => y ?? x,
         default: () => []
     }),
-    
+
     // Analysis outputs
     sourceCredibilityScore: Annotation<number>({
         reducer: (x, y) => y ?? x,
@@ -733,9 +733,9 @@ const SourceCredibilityState = Annotation.Root({
 });
 
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 function extractDomain(url: string): string {
@@ -771,7 +771,7 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
             Be thorough but efficient. Prioritize analyzing primary sources over searching.
             Focus on objective indicators of credibility.`;
 
-    const urlsInfo = state.urls.length > 0 
+    const urlsInfo = state.urls.length > 0
         ? `\n\nURLs to analyze:\n${state.urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
         : "\n\nNo URLs provided - you may need to search for sources.";
 
@@ -785,20 +785,20 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
 
 async function processToolResults(state: typeof SourceCredibilityState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
     const searchResults: any[] = [];
     const scrapedContent: any[] = [];
-    
+
     for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
         const observation = await (tool as any).invoke(toolCall);
         result.push(observation);
-        
+
         // Track results
         try {
             const parsed = JSON.parse(observation.content as string);
@@ -815,8 +815,8 @@ async function processToolResults(state: typeof SourceCredibilityState.State) {
             // Ignore parsing errors
         }
     }
-    
-    return { 
+
+    return {
         messages: result,
         searchResults,
         scrapedContent
@@ -874,15 +874,15 @@ Be precise and objective. No preamble, just JSON.`;
     ]);
 
     try {
-        const content = typeof verdictMessage.content === 'string' 
-            ? verdictMessage.content 
+        const content = typeof verdictMessage.content === 'string'
+            ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const verdict = JSON.parse(jsonStr);
-        
+
         return {
             sourceCredibilityScore: verdict.sourceCredibilityScore ?? 0.5,
             isCredible: verdict.isCredible ?? true,
@@ -908,22 +908,22 @@ Be precise and objective. No preamble, just JSON.`;
 
 async function shouldContinue(state: typeof SourceCredibilityState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage) return END;
-    
+
     if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
+
     const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
     if (hasToolResults && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     return END;
 }
 
@@ -948,7 +948,7 @@ export { sourceCredibilityAgent, SourceCredibilityState };
 //TESTING!
 async function testSourceCredibilityAgent() {
     console.log("🔍 Testing Source Credibility Agent (MCP)\n");
-    
+
     const testCases = [
         {
             name: "Credible News Source",
@@ -987,25 +987,25 @@ async function testSourceCredibilityAgent() {
         console.log(`${"=".repeat(70)}`);
         console.log(`Claim: "${testCase.claim}"`);
         console.log(`URLs: ${testCase.urls.length > 0 ? testCase.urls.join('\n      ') : 'None'}\n`);
-        
+
         const result = await sourceCredibilityAgent.invoke({
             claim: testCase.claim,
             urls: testCase.urls,
             messages: []
         });
-        
+
         console.log("📊 Source Credibility Analysis:");
         console.log(`  Overall Score: ${result.sourceCredibilityScore.toFixed(2)}`);
         console.log(`  Confidence: ${result.confidence.toFixed(2)}`);
         console.log(`  Is Credible: ${result.isCredible ? '✅' : '❌'}`);
-        
+
         if (result.domainReputations.length > 0) {
             console.log(`\n  📍 Domain Reputations:`);
             result.domainReputations.forEach(dr => {
                 console.log(`    - ${dr.domain}: ${dr.trustScore.toFixed(2)} - ${dr.analysis}`);
             });
         }
-        
+
         if (result.authorCredibility.length > 0) {
             console.log(`\n  ✍️  Author Credibility:`);
             result.authorCredibility.forEach(ac => {
@@ -1015,7 +1015,7 @@ async function testSourceCredibilityAgent() {
                 }
             });
         }
-        
+
         if (result.publicationQuality.length > 0) {
             console.log(`\n  📄 Publication Quality:`);
             result.publicationQuality.forEach(pq => {
@@ -1023,20 +1023,20 @@ async function testSourceCredibilityAgent() {
                 console.log(`      Indicators: ${pq.indicators.join(', ')}`);
             });
         }
-        
+
         if (result.factCheckStatus.hasFactChecks) {
             console.log(`\n  ✓ Fact-Check Status: ${result.factCheckStatus.consensus}`);
             result.factCheckStatus.results.forEach(fc => {
                 console.log(`    - ${fc.source}: ${fc.verdict} (${fc.url})`);
             });
         }
-        
+
         if (result.flaggedIssues.length > 0) {
             console.log(`\n  ⚠️  Flagged Issues: ${result.flaggedIssues.join(', ')}`);
         }
-        
+
         console.log(`\n  💡 Explanation: ${result.explanation}`);
-        
+
         if (result.scrapedContent.length > 0) {
             console.log(`\n  🔍 Scraped ${result.scrapedContent.length} source(s) for analysis`);
         }

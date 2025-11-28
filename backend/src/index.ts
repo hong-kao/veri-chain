@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { env } from "./config/env.config.js";
 import analyzeRoutes from "./routes/analyze.routes.js";
+import claimRoutes from "./routes/claim.routes.js";
 import { connectDb } from "./config/db.config.js";
 
 const app = express();
@@ -19,6 +20,7 @@ app.use((req, res, next) => {
 
 //routes
 app.use("/api", analyzeRoutes);
+app.use("/api/claims", claimRoutes);
 
 //health check
 app.get("/", (req, res) => {

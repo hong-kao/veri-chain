@@ -2,7 +2,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -40,7 +40,7 @@ class RedditAuthManager {
     private async refreshAccessToken(): Promise<string> {
         try {
             const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-            
+
             const response = await axios.post(
                 'https://www.reddit.com/api/v1/access_token',
                 new URLSearchParams({
@@ -59,7 +59,7 @@ class RedditAuthManager {
             this.accessToken = response.data.access_token;
             // Reddit tokens expire in 1 hour (3600 seconds)
             this.accessTokenExpiry = Date.now() + (response.data.expires_in * 1000);
-            
+
             // If a new refresh token is provided, update it
             if (response.data.refresh_token) {
                 this.refreshToken = response.data.refresh_token;
@@ -88,8 +88,8 @@ const searchReddit = tool(
     }) => {
         try {
             const accessToken = await redditAuth.getAccessToken();
-            
-            const searchUrl = subreddit 
+
+            const searchUrl = subreddit
                 ? `https://oauth.reddit.com/r/${subreddit}/search`
                 : 'https://oauth.reddit.com/search';
 
@@ -164,7 +164,7 @@ const getRedditComments = tool(
     }) => {
         try {
             const accessToken = await redditAuth.getAccessToken();
-            
+
             // Get post details and comments
             const response = await axios.get(
                 `https://oauth.reddit.com/comments/${postId}`,
@@ -315,7 +315,7 @@ const getFarcasterUserInfo = tool(
                 throw new Error('Either username or fid must be provided');
             }
 
-            const endpoint = fid 
+            const endpoint = fid
                 ? `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}`
                 : `https://api.neynar.com/v2/farcaster/user/search?q=${username}&limit=1`;
 
@@ -326,7 +326,7 @@ const getFarcasterUserInfo = tool(
                 }
             });
 
-            const user = fid 
+            const user = fid
                 ? response.data.users[0]
                 : response.data.result.users[0];
 
@@ -374,15 +374,15 @@ const scrapeTwitter = tool(
         try {
             // Using a simple scraper approach - in production you'd use a proper Twitter scraper library
             // like 'twitter-scraper' or 'agent-twitter-client' or similar
-            
+
             // For now, returning mock structure - you'll need to implement actual scraping
             // Options: 
             // 1. Use Apify Twitter scraper
             // 2. Use unofficial Twitter API wrappers
             // 3. Use headless browser (Puppeteer/Playwright)
-            
+
             console.warn('Twitter scraping not fully implemented - requires scraper setup');
-            
+
             return JSON.stringify({
                 query,
                 mode,
@@ -418,21 +418,21 @@ const analyzeSocialSentiment = tool(
             // Simple sentiment analysis
             const sentiments = posts.map(post => {
                 const text = post.text.toLowerCase();
-                
+
                 // Positive keywords
                 const positiveWords = ['true', 'accurate', 'correct', 'confirmed', 'verified', 'agree', 'support', 'evidence'];
                 const positiveCount = positiveWords.filter(word => text.includes(word)).length;
-                
+
                 // Negative keywords
                 const negativeWords = ['false', 'fake', 'misinformation', 'debunked', 'wrong', 'lie', 'misleading', 'hoax'];
                 const negativeCount = negativeWords.filter(word => text.includes(word)).length;
-                
+
                 // Skeptical keywords
                 const skepticalWords = ['doubt', 'questionable', 'unclear', 'unverified', 'suspicious', 'allegedly'];
                 const skepticalCount = skepticalWords.filter(word => text.includes(word)).length;
-                
+
                 let sentiment: 'supportive' | 'skeptical' | 'opposing' | 'neutral';
-                
+
                 if (positiveCount > negativeCount + skepticalCount) {
                     sentiment = 'supportive';
                 } else if (negativeCount > positiveCount) {
@@ -442,7 +442,7 @@ const analyzeSocialSentiment = tool(
                 } else {
                     sentiment = 'neutral';
                 }
-                
+
                 return {
                     text: post.text.substring(0, 200),
                     sentiment,
@@ -518,13 +518,13 @@ const llmWithTools = llm.bindTools(tools);
 
 const SocialEvidenceState = Annotation.Root({
     ...MessagesAnnotation.spec,
-    
+
     // Input
     claim: Annotation<string>({
         reducer: (x, y) => y ?? x,
         default: () => ""
     }),
-    
+
     // Analysis outputs
     redditEvidence: Annotation<Array<{
         post: any;
@@ -577,9 +577,9 @@ const SocialEvidenceState = Annotation.Root({
 });
 
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 async function analyzeSocialEvidence(state: typeof SocialEvidenceState.State) {
@@ -619,19 +619,19 @@ async function analyzeSocialEvidence(state: typeof SocialEvidenceState.State) {
 
 async function processToolResults(state: typeof SocialEvidenceState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
-    
+
     for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
         const observation = await (tool as any).invoke(toolCall);
         result.push(observation);
     }
-    
+
     return { messages: result };
 }
 
@@ -687,15 +687,15 @@ async function extractVerdict(state: typeof SocialEvidenceState.State) {
     ]);
 
     try {
-        const content = typeof verdictMessage.content === 'string' 
-            ? verdictMessage.content 
+        const content = typeof verdictMessage.content === 'string'
+            ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const verdict = JSON.parse(jsonStr);
-        
+
         return {
             socialScore: verdict.socialScore ?? 0.5,
             confidence: verdict.confidence ?? 0.5,
@@ -719,22 +719,22 @@ async function extractVerdict(state: typeof SocialEvidenceState.State) {
 
 async function shouldContinue(state: typeof SocialEvidenceState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage) return END;
-    
+
     if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
+
     const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
     if (hasToolResults && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
         return "extractVerdict";
     }
-    
+
     return END;
 }
 
@@ -759,7 +759,7 @@ export { socialEvidenceAgent, SocialEvidenceState };
 // ============================================
 async function testSocialEvidenceAgent() {
     console.log("🔍 Testing Social Evidence Agent (MCP)\n");
-    
+
     const testCases = [
         {
             name: "Scientific Claim",
@@ -784,7 +784,7 @@ async function testSocialEvidenceAgent() {
         console.log(`Test: ${testCase.name}`);
         console.log(`${"=".repeat(70)}`);
         console.log(`Claim: "${testCase.claim}"\n`);
-        
+
         try {
             const result = await socialEvidenceAgent.invoke({
                 claim: testCase.claim,
@@ -793,14 +793,14 @@ async function testSocialEvidenceAgent() {
 
             console.log("\n📊 SOCIAL EVIDENCE ANALYSIS RESULTS:");
             console.log("━".repeat(70));
-            
+
             console.log(`\n🎯 Social Score: ${(result.socialScore * 100).toFixed(1)}%`);
             console.log(`🎯 Confidence: ${(result.confidence * 100).toFixed(1)}%`);
-            
+
             console.log(`\n📈 Overall Sentiment:`);
             console.log(`   Consensus: ${result.overallSentiment.consensus.toUpperCase()}`);
             console.log(`   Confidence: ${(result.overallSentiment.confidence * 100).toFixed(1)}%`);
-            
+
             if (result.overallSentiment.distribution) {
                 console.log(`\n   Distribution:`);
                 const dist = result.overallSentiment.distribution;
@@ -850,7 +850,7 @@ async function testSocialEvidenceAgent() {
             console.log(`   ${result.explanation || 'No explanation provided'}`);
 
             console.log(`\n🔧 Debug - Tool Calls Made:`);
-            const toolMessages = result.messages.filter((m: BaseMessage) => 
+            const toolMessages = result.messages.filter((m: BaseMessage) =>
                 m._getType() === 'ai' && hasToolCalls(m)
             );
             if (toolMessages.length > 0) {
@@ -864,14 +864,14 @@ async function testSocialEvidenceAgent() {
             }
 
             console.log(`\n✅ Test completed successfully`);
-            
+
         } catch (error: any) {
             console.error(`\n❌ Test failed:`, error.message);
             if (error.response?.data) {
                 console.error('API Error Details:', JSON.stringify(error.response.data, null, 2));
             }
         }
-        
+
         // Add delay between tests to respect API rate limits
         if (testCase !== testCases[testCases.length - 1]) {
             console.log(`\n⏳ Waiting 3 seconds before next test...`);

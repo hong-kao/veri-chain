@@ -1,7 +1,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { env } from '../config/env.config';
+import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
@@ -14,7 +14,7 @@ import {
     buildSocialGraph,
     calculatePropagationMetrics,
     type SocialPost
-} from '../utils/socialFetcher';
+} from '../utils/socialFetcher.js';
 
 const llm = new ChatGoogleGenerativeAI({
     apiKey: env.GEMINI_API_KEY || '',
@@ -28,7 +28,7 @@ const searchSocialPlatforms = tool(
     async ({ query, limit = 25 }: { query: string; limit?: number }) => {
         try {
             const results = await searchAllPlatforms(query, limit);
-            
+
             return JSON.stringify({
                 totalPosts: results.allPosts.length,
                 redditPosts: results.byPlatform.reddit.length,
@@ -140,10 +140,10 @@ const analyzePropagationPatterns = tool(
         try {
             const metrics = calculatePropagationMetrics(posts);
             const graph = buildSocialGraph(posts);
-            
+
             // Additional pattern detection
             const patterns: string[] = [...metrics.suspiciousPatterns];
-            
+
             // Detect coordinated timing (multiple posts within minutes)
             const timestamps = posts.map(p => p.createdAt.getTime()).sort((a, b) => a - b);
             for (let i = 1; i < timestamps.length; i++) {
@@ -153,28 +153,28 @@ const analyzePropagationPatterns = tool(
                     break;
                 }
             }
-            
+
             // Detect similar content (possible copy-paste)
             const contents = posts.map(p => p.content.toLowerCase().trim());
             const uniqueContents = new Set(contents);
             if (uniqueContents.size < contents.length * 0.7) {
                 patterns.push(`duplicate_content: ${contents.length - uniqueContents.size} duplicate posts`);
             }
-            
+
             // Detect platform concentration
             const platformCounts = posts.reduce((acc, p) => {
                 acc[p.platform] = (acc[p.platform] || 0) + 1;
                 return acc;
             }, {} as Record<string, number>);
-            
-            const maxPlatform = Object.entries(platformCounts).reduce((max, [plat, count]) => 
+
+            const maxPlatform = Object.entries(platformCounts).reduce((max, [plat, count]) =>
                 count > max.count ? { platform: plat, count } : max
-            , { platform: '', count: 0 });
-            
+                , { platform: '', count: 0 });
+
             if (maxPlatform.count > posts.length * 0.9 && posts.length > 10) {
                 patterns.push(`single_platform_dominance: ${maxPlatform.count}/${posts.length} posts on ${maxPlatform.platform}`);
             }
-            
+
             return JSON.stringify({
                 metrics,
                 graphDepth: Math.max(...graph.map(node => node.depth), 0),
@@ -218,7 +218,7 @@ const llmWithTools = llm.bindTools(tools);
 
 const PropagationPatternState = Annotation.Root({
     ...MessagesAnnotation.spec,
-    
+
     // Input
     claim: Annotation<string>({
         reducer: (x, y) => y ?? x,
@@ -235,7 +235,7 @@ const PropagationPatternState = Annotation.Root({
         reducer: (x, y) => ({ ...x, ...y }),
         default: () => ({})
     }),
-    
+
     // Analysis outputs
     suspicionScore: Annotation<number>({
         reducer: (x, y) => y ?? x,
@@ -293,9 +293,9 @@ const PropagationPatternState = Annotation.Root({
 // HELPER
 
 function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_calls: ToolCall[] } {
-    return 'tool_calls' in message && 
-           Array.isArray((message as any).tool_calls) && 
-           (message as any).tool_calls.length > 0;
+    return 'tool_calls' in message &&
+        Array.isArray((message as any).tool_calls) &&
+        (message as any).tool_calls.length > 0;
 }
 
 // NODES
@@ -323,7 +323,7 @@ Analysis workflow:
 Be thorough but efficient. Your goal is to detect inauthentic coordination, not judge content truth.`;
 
     const hasPosts = state.socialMetadata?.posts && state.socialMetadata.posts.length > 0;
-    const postsInfo = hasPosts 
+    const postsInfo = hasPosts
         ? `\n\nPre-collected posts: ${state.socialMetadata?.posts?.length} posts from previous agents`
         : "\n\nNo posts provided - you'll need to search social platforms";
 
@@ -337,16 +337,16 @@ Be thorough but efficient. Your goal is to detect inauthentic coordination, not 
 
 async function processToolResults(state: typeof PropagationPatternState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage || !hasToolCalls(lastMessage)) {
         return { messages: [] };
     }
-    
+
     const result: ToolMessage[] = [];
-    
+
     for (const toolCall of lastMessage.tool_calls) {
         const tool = toolsByName[toolCall.name];
-        
+
         // Special handling for analyzePropagationPatterns
         if (toolCall.name === 'analyzePropagationPatterns' && state.socialMetadata?.posts) {
             const observation = await (tool as any).invoke({
@@ -358,7 +358,7 @@ async function processToolResults(state: typeof PropagationPatternState.State) {
             result.push(observation);
         }
     }
-    
+
     return { messages: result };
 }
 
@@ -406,15 +406,15 @@ Be precise and objective. No preamble, just JSON.`;
     ]);
 
     try {
-        const content = typeof verdictMessage.content === 'string' 
-            ? verdictMessage.content 
+        const content = typeof verdictMessage.content === 'string'
+            ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
-        
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-        
+
         const verdict = JSON.parse(jsonStr);
-        
+
         return {
             suspicionScore: verdict.suspicionScore ?? 0.0,
             confidence: verdict.confidence ?? 0.5,
@@ -456,22 +456,22 @@ Be precise and objective. No preamble, just JSON.`;
 
 async function shouldContinue(state: typeof PropagationPatternState.State) {
     const lastMessage = state.messages.at(-1);
-    
+
     if (!lastMessage) return END;
-    
+
     if (hasToolCalls(lastMessage)) {
         return "processToolResults";
     }
-    
+
     const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
     if (hasToolResults && !state.summary) {
         return "extractVerdict";
     }
-    
+
     if (!hasToolResults && state.messages.length >= 2 && !state.summary) {
         return "extractVerdict";
     }
-    
+
     return END;
 }
 
@@ -497,7 +497,7 @@ export { propagationPatternAgent, PropagationPatternState };
 
 async function testPropagationPatternAgent() {
     console.log("🔍 Testing Propagation & Pattern Agent (MCP)\n");
-    
+
     const testCases = [
         {
             name: "Organic Discussion",
@@ -527,24 +527,24 @@ async function testPropagationPatternAgent() {
         console.log(`${"=".repeat(70)}`);
         console.log(`Claim: "${testCase.claim}"`);
         console.log(`Claim ID: ${testCase.claimId}\n`);
-        
+
         const result = await propagationPatternAgent.invoke({
             claim: testCase.claim,
             claimId: testCase.claimId,
             socialMetadata: testCase.socialMetadata,
             messages: []
         });
-        
+
         console.log("📊 Propagation Pattern Analysis:");
         console.log(`  Suspicion Score: ${result.suspicionScore}/100`);
         console.log(`  Confidence: ${result.confidence.toFixed(2)}`);
-        
+
         if (result.flags.length > 0) {
             console.log(`\n  🚩 Flags: ${result.flags.join(', ')}`);
         }
-        
+
         console.log(`\n  📝 Summary: ${result.summary}`);
-        
+
         console.log(`\n  📈 Propagation Metrics:`);
         console.log(`    Total Posts: ${result.propagationMetrics.totalPosts}`);
         console.log(`    Unique Authors: ${result.propagationMetrics.uniqueAuthors}`);
@@ -552,18 +552,18 @@ async function testPropagationPatternAgent() {
         console.log(`    Avg Engagement: ${result.propagationMetrics.avgEngagement.toFixed(2)}`);
         console.log(`    Platforms: ${result.propagationMetrics.platforms.join(', ') || 'None'}`);
         console.log(`    Burst Activity: ${result.propagationMetrics.burstActivity ? '⚠️ Yes' : '✅ No'}`);
-        
+
         if (result.suspiciousAccounts.length > 0) {
             console.log(`\n  🔍 Suspicious Accounts:`);
             result.suspiciousAccounts.forEach(acc => {
                 console.log(`    - ${acc.author} (${acc.platform}): ${acc.reason} [Score: ${acc.score.toFixed(2)}]`);
             });
         }
-        
+
         if (result.needsMediaForensics) {
             console.log(`\n  📸 Needs Media Forensics: Yes`);
         }
-        
+
         if (result.needsOtherAgents.length > 0) {
             console.log(`\n  🔗 Needs Other Agents: ${result.needsOtherAgents.join(', ')}`);
         }

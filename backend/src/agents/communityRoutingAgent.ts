@@ -11,6 +11,7 @@ interface ClaimMetadata {
     severity?: 'low' | 'medium' | 'high'; // impact estimate
     isTimeSensitive?: boolean;
     isBreaking?: boolean;
+    claimType?: string;
 }
 
 interface AIVerdict {
@@ -39,9 +40,9 @@ export interface RoutingInput {
 // OUTPUT TYPES
 export type RouteDecision = 'ai_only' | 'community_vote' | 'defer_archived';
 type Urgency = 'low' | 'normal' | 'high';
-type ReputationTier = 'bronze' | 'silver' | 'gold' | 'platinum';
+export type ReputationTier = 'bronze' | 'silver' | 'gold' | 'platinum';
 
-interface VoterCohort {
+export interface VoterCohort {
     topics?: string[];
     platforms?: string[];
     minReputationTier?: ReputationTier;

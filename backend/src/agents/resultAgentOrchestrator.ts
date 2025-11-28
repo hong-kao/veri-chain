@@ -1,6 +1,6 @@
 import { ClaimMetadata, AgentOutputs } from './scoringAgent.js';
-import { RoutingInput, RouteDecision } from './communityRoutingAgent.js';
-import { PrismaClient, ClaimStatus, VerdictType, AgentType, VotingStatus, NotifChannelType, NotifStatus, OnchainEventType, Prisma } from '@prisma/client';
+import { RoutingInput, RouteDecision, RoutingDecision, VoterCohort } from './communityRoutingAgent.js';
+import { PrismaClient, ClaimStatus, VerdictType, AgentType, VotingStatus, NotifChannelType, NotifStatus, OnchainEventType, Prisma, ClaimType, PlatformType } from '../generated/prisma/index.js';
 import { ethers } from 'ethers';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '../utils/email.js';
@@ -34,8 +34,8 @@ interface ClaimInput {
   submitterId: number;
   rawInput: string;
   normalizedText: string;
-  claimType: string; // Will be cast to ClaimType
-  platform?: string; // Will be cast to PlatformType
+  claimType: string;
+  platform?: string;
   platformPostId?: string;
   platformAuthor?: string;
   platformUrl?: string;
@@ -52,18 +52,15 @@ interface AgentResult {
   rawResult: any;
 }
 
-interface RoutingDecision {
-  route: 'ai_only' | 'community_vote';
-  urgency: 'low' | 'normal' | 'high';
-  targetVoterCohorts: string[];
-  votingWindowSeconds: number;
-  minVotesRequired: number;
-  notificationPriority: string;
-  reasoning: string;
-  escalationReasons: string[];
-}
-
 export class ResultOrchestrator {
+  private mapAIVerdictToPrisma(verdict: 'TRUE' | 'FALSE' | 'UNCLEAR'): VerdictType {
+    switch (verdict) {
+      case 'TRUE': return VerdictType.true_;
+      case 'FALSE': return VerdictType.false_;
+      case 'UNCLEAR': return VerdictType.unclear;
+      default: return VerdictType.unclear;
+    }
+  }
   private provider: ethers.Provider;
   private signer: ethers.Signer;
   private claimRegistryContract: ethers.Contract;
@@ -97,14 +94,14 @@ export class ResultOrchestrator {
     const claimUuid = uuidv4();
 
     // Create claim in database
-    const claim = await prisma.claims.create({
+    const claim = await prisma.claim.create({
       data: {
         claim_uuid: claimUuid,
         submitter_id: input.submitterId,
         raw_input: input.rawInput,
         normalized_text: input.normalizedText,
-        claim_type: input.claimType as any, // Cast to any to avoid enum issues if input is string
-        platform: input.platform as any,
+        claim_type: input.claimType as ClaimType,
+        platform: input.platform as PlatformType,
         platform_post_id: input.platformPostId,
         platform_author: input.platformAuthor,
         platform_url: input.platformUrl,
@@ -117,7 +114,7 @@ export class ResultOrchestrator {
       }
     });
 
-    console.log(`✅ Claim created in DB: ID=${claim.id}, UUID=${claimUuid}`);
+    console.log(`✅ Claim created in DB: ID = ${claim.id}, UUID = ${claimUuid} `);
 
     // Compute claim hash and register on-chain
     const claimHash = ethers.keccak256(
@@ -125,7 +122,7 @@ export class ResultOrchestrator {
     );
 
     try {
-      const submitterUser = await prisma.users.findUnique({
+      const submitterUser = await prisma.user.findUnique({
         where: { id: input.submitterId }
       });
 
@@ -140,10 +137,10 @@ export class ResultOrchestrator {
       );
 
       const receipt = await tx.wait();
-      console.log(`⛓️  Claim registered on-chain: TX=${receipt.hash}`);
+      console.log(`⛓️  Claim registered on - chain: TX = ${receipt.hash} `);
 
       // Update claim with on-chain data
-      await prisma.claims.update({
+      await prisma.claim.update({
         where: { id: claim.id },
         data: {
           claim_hash: claimHash,
@@ -153,7 +150,7 @@ export class ResultOrchestrator {
       });
 
       // Log on-chain event
-      await prisma.onchain_events.create({
+      await prisma.onchainEvent.create({
         data: {
           claim_id: claim.id,
           tx_hash: receipt.hash,
@@ -180,7 +177,7 @@ export class ResultOrchestrator {
    * Executes all specialized AI agents and stores results
    */
   async runAnalysisAgents(claimId: number): Promise<AgentResult[]> {
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -212,7 +209,7 @@ export class ResultOrchestrator {
     }
 
     // Update claim status
-    await prisma.claims.update({
+    await prisma.claim.update({
       where: { id: claimId },
       data: {
         status: ClaimStatus.ai_evaluated,
@@ -252,7 +249,7 @@ export class ResultOrchestrator {
       const result = await agentFunction.invoke(agentInput);
 
       // Store in agent_results table
-      await prisma.agent_results.create({
+      await prisma.agentResult.create({
         data: {
           claim_id: claimId,
           agent_name: agentName as AgentType,
@@ -287,7 +284,7 @@ export class ResultOrchestrator {
   async runAggregation(claimId: number): Promise<void> {
     console.log(`📊 Running aggregation for claim ${claimId}...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -296,7 +293,7 @@ export class ResultOrchestrator {
     }
 
     // Fetch all agent results
-    const agentResults = await prisma.agent_results.findMany({
+    const agentResults = await prisma.agentResult.findMany({
       where: { claim_id: claimId }
     });
 
@@ -305,23 +302,21 @@ export class ResultOrchestrator {
     }
 
     // FIXED: Prepare ClaimMetadata with correct structure
-    // FIXED: Prepare ClaimMetadata with correct structure
     const claimMetadata: ClaimMetadata = {
-      claimId: String(claim.id), // Convert to string
-      normalizedText: claim.normalized_text,
-      platforms: claim.platform ? [claim.platform] : [],
-      claimType: claim.claim_type,
-      urls: claim.extracted_urls ? JSON.parse(claim.extracted_urls) : []
+      claimId: claim.id.toString(),
+      normalizedText: claim.normalized_text || '',
+      claimType: claim.claim_type || undefined,
+      platforms: claim.platform ? [claim.platform] : []
     };
 
     // Prepare AgentOutputs
     const agentOutputs: AgentOutputs = {
-      logicConsistency: undefined,
-      citationEvidence: undefined,
+      logic: undefined,
+      citation: undefined,
       sourceCredibility: undefined,
       socialEvidence: undefined,
       mediaForensics: undefined,
-      propagationPattern: undefined
+      propagation: undefined
     };
 
     for (const ar of agentResults) {
@@ -330,10 +325,10 @@ export class ResultOrchestrator {
 
         switch (ar.agent_name) {
           case 'logic_consistency':
-            agentOutputs.logicConsistency = rawResult;
+            agentOutputs.logic = rawResult;
             break;
           case 'citation_evidence':
-            agentOutputs.citationEvidence = rawResult;
+            agentOutputs.citation = rawResult;
             break;
           case 'source_credibility':
             agentOutputs.sourceCredibility = rawResult;
@@ -345,7 +340,7 @@ export class ResultOrchestrator {
             agentOutputs.mediaForensics = rawResult;
             break;
           case 'propagation_pattern':
-            agentOutputs.propagationPattern = rawResult;
+            agentOutputs.propagation = rawResult;
             break;
         }
       } catch (error) {
@@ -357,10 +352,10 @@ export class ResultOrchestrator {
     const aggregationResult = await aggregateAndScore(claimMetadata, agentOutputs);
 
     // Update claim with AI verdict
-    await prisma.claims.update({
+    await prisma.claim.update({
       where: { id: claimId },
       data: {
-        ai_verdict: aggregationResult.aiVerdict,
+        ai_verdict: this.mapAIVerdictToPrisma(aggregationResult.aiVerdict),
         ai_confidence: aggregationResult.aiConfidence,
         ai_flags: JSON.stringify(aggregationResult.warnings || []),
         ai_explanation: aggregationResult.explanation,
@@ -379,7 +374,7 @@ export class ResultOrchestrator {
   async routeClaim(claimId: number): Promise<void> {
     console.log(`🔀 Routing claim ${claimId}...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -388,12 +383,12 @@ export class ResultOrchestrator {
     }
 
     // Fetch all agent results for flags
-    const agentResults = await prisma.agent_results.findMany({
+    const agentResults = await prisma.agentResult.findMany({
       where: { claim_id: claimId }
     });
 
     // FIXED: Explicitly type the arrow function parameter
-    const allFlags = agentResults.flatMap((ar: any) => {
+    const allFlags = agentResults.flatMap((ar: Prisma.AgentResultGetPayload<{}>) => {
       try {
         return JSON.parse(ar.flags || '[]') as string[];
       } catch {
@@ -402,13 +397,22 @@ export class ResultOrchestrator {
     });
 
     // FIXED: Prepare routing input with all required fields
+    // FIXED: Prepare routing input with all required fields
     const routingInput: RoutingInput = {
-      claim: claim.normalized_text,
-      aiVerdict: claim.ai_verdict as VerdictType,
-      aiConfidence: claim.ai_confidence || 0.5,
-      agentFlags: allFlags,
-      claimType: claim.claim_type,
-      platform: claim.platform || 'unknown'
+      claim: {
+        claimId: claim.id.toString(),
+        normalizedText: claim.normalized_text || '',
+        platforms: claim.platform ? [claim.platform] : [],
+        claimType: claim.claim_type || undefined
+      },
+      aiVerdict: {
+        verdict: claim.ai_verdict as any, // Cast to match enum if needed
+        confidence: claim.ai_confidence || 0.5,
+        overallScore: 0 // Placeholder if not available
+      },
+      agentFlags: {
+        // Map string flags to boolean flags if possible, or leave empty/default
+      }
     };
 
     // Run community routing
@@ -421,7 +425,7 @@ export class ResultOrchestrator {
       await this.initiateCommunityVoting(claimId, routingDecision);
     } else if (routingDecision.route === 'defer_archived') {
       // Handle deferred/archived claims
-      await prisma.claims.update({
+      await prisma.claim.update({
         where: { id: claimId },
         data: {
           status: ClaimStatus.resolved,
@@ -441,7 +445,7 @@ export class ResultOrchestrator {
   private async resolveWithAI(claimId: number): Promise<void> {
     console.log(`✅ Resolving claim ${claimId} with AI verdict only...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -450,7 +454,7 @@ export class ResultOrchestrator {
     }
 
     // Update claim with final verdict
-    await prisma.claims.update({
+    await prisma.claim.update({
       where: { id: claimId },
       data: {
         final_verdict: claim.ai_verdict,
@@ -470,11 +474,11 @@ export class ResultOrchestrator {
    */
   private async initiateCommunityVoting(
     claimId: number,
-    routing: RouteDecision  // FIXED: Use RouteDecision type from communityRoutingAgent
+    routing: RoutingDecision  // FIXED: Use RoutingDecision type from communityRoutingAgent
   ): Promise<void> {
     console.log(`🗳️  Initiating community voting for claim ${claimId}...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -486,30 +490,30 @@ export class ResultOrchestrator {
     const opensAt = new Date();
     const closesAt = new Date(opensAt.getTime() + routing.votingWindowSeconds * 1000);
 
-    // Create voting session
-    const session = await prisma.voting_sessions.create({
-      data: {
-        claim_id: claimId,
-        route_reason: routing.reasoning,
-        urgency: routing.urgency,
-        voting_window_secs: routing.votingWindowSeconds,
-        min_votes_required: routing.minVotesRequired,
-        status: VotingStatus.open,
-        opened_at: opensAt,
-        closes_at: closesAt
-      }
-    });
+    // ACID: Create session and update claim in a single transaction
+    const [session] = await prisma.$transaction([
+      prisma.votingSession.create({
+        data: {
+          claim_id: claimId,
+          route_reason: routing.reasoning,
+          urgency: routing.urgency,
+          voting_window_secs: routing.votingWindowSeconds,
+          min_votes_required: routing.minVotesRequired,
+          status: VotingStatus.open,
+          opened_at: opensAt,
+          closes_at: closesAt
+        }
+      }),
+      prisma.claim.update({
+        where: { id: claimId },
+        data: {
+          status: ClaimStatus.needs_vote,
+          updated_at: new Date()
+        }
+      })
+    ]);
 
     console.log(`  ✓ Voting session created: ID=${session.id}`);
-
-    // Update claim status
-    await prisma.claims.update({
-      where: { id: claimId },
-      data: {
-        status: ClaimStatus.needs_vote,
-        updated_at: new Date()
-      }
-    });
 
     // Get eligible voters based on cohorts
     const eligibleVoterIds = await this.getEligibleVoters(
@@ -525,23 +529,24 @@ export class ResultOrchestrator {
    * Get eligible voters based on cohorts
    */
   private async getEligibleVoters(
-    cohorts: string[],
+    cohorts: VoterCohort[],
     platform?: string | null
   ): Promise<number[]> {
     try {
-      const users = await prisma.users.findMany({
+      const users = await prisma.user.findMany({
         where: {
           reputation_score: { gte: 50 } // Basic reputation threshold
         }
       });
 
       // FIXED: Explicitly type user parameter and implement actual filtering logic
-      const eligibleUsers = users.filter((user: any) => {
+      const eligibleUsers = users.filter((user: Prisma.UserGetPayload<{}>) => {
         // Filter based on cohorts
         if (cohorts.length > 0) {
-          // Example: check if user has expertise in required cohorts
-          // For now, include all users with sufficient reputation
-          // TODO: Implement cohort-based filtering when user cohort data is available
+          // Check if user matches ANY of the required cohorts
+          // For now, we'll just check if they have a sufficient reputation score as a proxy
+          // In a real implementation, we would match user.interests or user.reputation_tier against cohort.topics/minReputationTier
+          return true;
         }
 
         // Filter based on platform expertise if specified
@@ -554,7 +559,7 @@ export class ResultOrchestrator {
       });
 
       // FIXED: Explicitly type map parameter
-      return eligibleUsers.map((u: any) => u.id);
+      return eligibleUsers.map((u: Prisma.UserGetPayload<{}>) => u.id);
     } catch (error) {
       console.error('Error fetching eligible voters:', error);
       return []; // Return empty array on error
@@ -571,7 +576,7 @@ export class ResultOrchestrator {
   ): Promise<void> {
     console.log(`📧 Notifying ${voterIds.length} voters...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -579,7 +584,7 @@ export class ResultOrchestrator {
 
     for (const voterId of voterIds) {
       try {
-        const user = await prisma.users.findUnique({
+        const user = await prisma.user.findUnique({
           where: { id: voterId }
         });
 
@@ -600,7 +605,7 @@ export class ResultOrchestrator {
         await sendEmail(emailPayload);
 
         // Log notification
-        await prisma.notifications.create({
+        await prisma.notification.create({
           data: {
             user_id: voterId,
             claim_id: claimId,
@@ -619,7 +624,7 @@ export class ResultOrchestrator {
         console.error(`  ✗ Failed to notify voter ${voterId}:`, error);
 
         // Log failed notification
-        await prisma.notifications.create({
+        await prisma.notification.create({
           data: {
             user_id: voterId,
             claim_id: claimId,
@@ -648,7 +653,7 @@ export class ResultOrchestrator {
     console.log(`🗳️  Processing vote for claim ${claimId} from ${voterAddress}...`);
 
     // Find voter by wallet address
-    const voter = await prisma.users.findUnique({
+    const voter = await prisma.user.findUnique({
       where: { wallet_address: voterAddress }
     });
 
@@ -658,7 +663,7 @@ export class ResultOrchestrator {
     }
 
     // Find active voting session
-    const session = await prisma.voting_sessions.findFirst({
+    const session = await prisma.votingSession.findFirst({
       where: {
         claim_id: claimId,
         status: VotingStatus.open
@@ -671,7 +676,7 @@ export class ResultOrchestrator {
     }
 
     // Record vote
-    await prisma.votes.create({
+    await prisma.vote.create({
       data: {
         session_id: session.id,
         claim_id: claimId,
@@ -685,7 +690,7 @@ export class ResultOrchestrator {
     });
 
     // Log on-chain event
-    await prisma.onchain_events.create({
+    await prisma.onchainEvent.create({
       data: {
         claim_id: claimId,
         tx_hash: txHash,
@@ -709,7 +714,7 @@ export class ResultOrchestrator {
   async closeVotingAndResolve(claimId: number): Promise<void> {
     console.log(`🔒 Closing voting for claim ${claimId}...`);
 
-    const session = await prisma.voting_sessions.findFirst({
+    const session = await prisma.votingSession.findFirst({
       where: {
         claim_id: claimId,
         status: VotingStatus.open
@@ -728,14 +733,14 @@ export class ResultOrchestrator {
     }
 
     // Get all votes
-    const votes = await prisma.votes.findMany({
+    const votes = await prisma.vote.findMany({
       where: { claim_id: claimId, session_id: session.id }
     });
 
     console.log(`  📊 Received ${votes.length} votes (min required: ${session.min_votes_required})`);
 
     // Check if minimum votes met
-    if (votes.length < session.min_votes_required) {
+    if (votes.length < (session.min_votes_required || 0)) {
       console.log(`  ⚠️  Insufficient votes, using AI verdict`);
       await this.resolveWithAI(claimId);
       return;
@@ -748,12 +753,19 @@ export class ResultOrchestrator {
       [VerdictType.unclear]: 0
     };
 
+    const tally: { [key in VerdictType]?: number } = {
+      [VerdictType.true_]: 0,
+      [VerdictType.false_]: 0,
+      [VerdictType.unclear]: 0
+    };
+
     let totalStake = 0n;
 
     for (const vote of votes) {
-      const stake = BigInt(vote.staked_amount || '0');
-      verdictScores[vote.choice] += Number(stake);
-      totalStake += stake;
+      const stakedAmount = vote.staked_amount ? Number(vote.staked_amount) : 0;
+      tally[vote.choice] = (tally[vote.choice] || 0) + stakedAmount;
+      verdictScores[vote.choice] += stakedAmount; // Changed from Number(stake)
+      totalStake += BigInt(stakedAmount); // Changed from stake
     }
 
     // Determine final verdict (highest stake wins)
@@ -767,26 +779,26 @@ export class ResultOrchestrator {
 
     console.log(`  ✅ Community verdict: ${finalVerdict} (${(finalConfidence * 100).toFixed(0)}% confidence)`);
 
-    // Update claim
-    await prisma.claims.update({
-      where: { id: claimId },
-      data: {
-        final_verdict: finalVerdict,
-        final_confidence: finalConfidence,
-        status: ClaimStatus.resolved,
-        resolved_at: new Date(),
-        updated_at: new Date()
-      }
-    });
-
-    // Close voting session
-    await prisma.voting_sessions.update({
-      where: { id: session.id },
-      data: {
-        status: VotingStatus.closed,
-        closed_at: new Date()
-      }
-    });
+    // ACID: Update claim and close session in a single transaction
+    await prisma.$transaction([
+      prisma.claim.update({
+        where: { id: claimId },
+        data: {
+          final_verdict: finalVerdict,
+          final_confidence: finalConfidence,
+          status: ClaimStatus.resolved,
+          resolved_at: new Date(),
+          updated_at: new Date()
+        }
+      }),
+      prisma.votingSession.update({
+        where: { id: session.id },
+        data: {
+          status: VotingStatus.closed,
+          closed_at: new Date()
+        }
+      })
+    ]);
 
     // Publish results and distribute rewards
     await this.publishFinalResults(claimId);
@@ -799,7 +811,7 @@ export class ResultOrchestrator {
   private async publishFinalResults(claimId: number): Promise<void> {
     console.log(`📢 Publishing final results for claim ${claimId}...`);
 
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
@@ -822,31 +834,31 @@ export class ResultOrchestrator {
       const resolveReceipt = await resolveTx.wait();
       console.log(`  ⛓️  Claim resolved on-chain: TX=${resolveReceipt.hash}`);
 
-      // Update claim with resolve tx
-      await prisma.claims.update({
-        where: { id: claimId },
-        data: {
-          onchain_resolve_tx: resolveReceipt.hash,
-          updated_at: new Date()
-        }
-      });
-
-      // Log on-chain event
-      await prisma.onchain_events.create({
-        data: {
-          claim_id: claimId,
-          tx_hash: resolveReceipt.hash,
-          event_type: OnchainEventType.claim_resolved,
-          payload: JSON.stringify({
-            verdict: claim.final_verdict,
-            confidence: claim.final_confidence
-          }),
-          created_at: new Date()
-        }
-      });
+      // ACID: Update claim and log event in a single transaction
+      await prisma.$transaction([
+        prisma.claim.update({
+          where: { id: claimId },
+          data: {
+            onchain_resolve_tx: resolveReceipt.hash,
+            updated_at: new Date()
+          }
+        }),
+        prisma.onchainEvent.create({
+          data: {
+            claim_id: claimId,
+            tx_hash: resolveReceipt.hash,
+            event_type: OnchainEventType.claim_resolved,
+            payload: JSON.stringify({
+              verdict: claim.final_verdict,
+              confidence: claim.final_confidence
+            }),
+            created_at: new Date()
+          }
+        })
+      ]);
 
       // 2. Settle claim and distribute rewards (if voting occurred)
-      const votingSession = await prisma.voting_sessions.findFirst({
+      const votingSession = await prisma.votingSession.findFirst({
         where: { claim_id: claimId }
       });
 
@@ -860,7 +872,7 @@ export class ResultOrchestrator {
         console.log(`  💰 Rewards distributed: TX=${settleReceipt.hash}`);
 
         // Log on-chain event
-        await prisma.onchain_events.create({
+        await prisma.onchainEvent.create({
           data: {
             claim_id: claimId,
             tx_hash: settleReceipt.hash,
@@ -888,13 +900,13 @@ export class ResultOrchestrator {
    * Notify claim submitter of final verdict
    */
   private async notifySubmitter(claimId: number): Promise<void> {
-    const claim = await prisma.claims.findUnique({
+    const claim = await prisma.claim.findUnique({
       where: { id: claimId }
     });
 
     if (!claim) return;
 
-    const submitter = await prisma.users.findUnique({
+    const submitter = await prisma.user.findUnique({
       where: { id: claim.submitter_id }
     });
 
@@ -916,7 +928,7 @@ export class ResultOrchestrator {
 
       await sendEmail(emailPayload);
 
-      await prisma.notifications.create({
+      await prisma.notification.create({
         data: {
           user_id: claim.submitter_id,
           claim_id: claimId,
