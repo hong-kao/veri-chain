@@ -84,32 +84,46 @@ export default function WaterCanvas() {
         const ctx = canvas2d.getContext("2d", { alpha: true });
         if (!ctx) return () => { };
 
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, width, height);
-
-        const mainFontSize = Math.round(200 * window.devicePixelRatio);
-        const subtitleFontSize = Math.round(24 * window.devicePixelRatio);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `bold ${mainFontSize}px Source Code Pro`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.textRendering = "geometricPrecision" as CanvasTextRendering;
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-
-        // Main title
-        ctx.fillText("VeriChain", width / 2, height / 2);
-
-        // Subtitle
-        ctx.font = `${subtitleFontSize}px Source Code Pro`;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText("Truth verified. Reputation earned.", width / 2, height / 2 + mainFontSize * 0.4);
-
         const textTexture = new THREE.CanvasTexture(canvas2d);
         textTexture.minFilter = THREE.LinearFilter;
         textTexture.magFilter = THREE.LinearFilter;
         textTexture.format = THREE.RGBAFormat;
+
+        // Function to draw content
+        const drawContent = () => {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, width, height);
+
+            const newMainFontSize = Math.round(200 * window.devicePixelRatio);
+            const newSubtitleFontSize = Math.round(24 * window.devicePixelRatio);
+
+            ctx.fillStyle = "#ffffff";
+            // Use Gavency font for main title
+            ctx.font = `${newMainFontSize}px Gavency`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            // Main title
+            ctx.fillText("VeriChain", width / 2, height / 2);
+
+            // Subtitle
+            ctx.font = `${newSubtitleFontSize}px Source Code Pro`;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText("Truth verified. Reputation earned.", width / 2, height / 2 + newMainFontSize * 0.4);
+
+            textTexture.needsUpdate = true;
+        };
+
+        // Load font before drawing
+        const font = new FontFace('Gavency', 'url("/Gavency Free Regular.otf")');
+        font.load().then(() => {
+            document.fonts.add(font);
+            drawContent();
+        }).catch(err => {
+            console.error("Failed to load Gavency font:", err);
+            // Fallback draw
+            drawContent();
+        });
 
         const onResize = () => {
             width = getWidth();
@@ -124,26 +138,8 @@ export default function WaterCanvas() {
 
             canvas2d.width = width;
             canvas2d.height = height;
-            ctx.fillStyle = "#000000";
-            ctx.fillRect(0, 0, width, height);
 
-            const newMainFontSize = Math.round(200 * window.devicePixelRatio);
-            const newSubtitleFontSize = Math.round(24 * window.devicePixelRatio);
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = `bold ${newMainFontSize}px Source Code Pro`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-
-            // Main title
-            ctx.fillText("VeriChain", width / 2, height / 2);
-
-            // Subtitle
-            ctx.font = `${newSubtitleFontSize}px Source Code Pro`;
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText("Truth verified. Reputation earned.", width / 2, height / 2 + newMainFontSize * 0.4);
-
-            textTexture.needsUpdate = true;
+            drawContent();
         };
 
         const onMouseMove = (e: MouseEvent) => {

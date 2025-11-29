@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { IoSend, IoAdd, IoDocumentAttach, IoLink, IoClose } from "react-icons/io5";
+import TerminalLoader from '../components/TerminalLoader';
 import './ClaimsSubmit.css';
 
 const ClaimsSubmit: React.FC = () => {
+    // Loader runs every time, simulating network speed
+    const [isPageLoading, setIsPageLoading] = useState(true);
+
     const [inputValue, setInputValue] = useState("");
+    const [attachedFile, setAttachedFile] = useState<File | null>(null);
+    const [showAttachMenu, setShowAttachMenu] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [messages, setMessages] = useState<{
         role: 'user' | 'ai',
         text?: string,
@@ -36,12 +44,18 @@ const ClaimsSubmit: React.FC = () => {
         return () => clearInterval(interval);
     }, [isProcessing]);
 
-    const handleSendMessage = () => {
-        if (!inputValue.trim()) return;
+    const handleLoaderComplete = () => {
+        setIsPageLoading(false);
+    };
 
-        const newMessages = [...messages, { role: 'user' as const, text: inputValue }];
+    const handleSendMessage = () => {
+        if (!inputValue.trim() && !attachedFile) return;
+
+        const messageText = attachedFile ? `${inputValue} (Attached: ${attachedFile.name})` : inputValue;
+        const newMessages = [...messages, { role: 'user' as const, text: messageText }];
         setMessages(newMessages);
         setInputValue("");
+        setAttachedFile(null);
         setIsProcessing(true);
         setLoadingText(loadingMessages[0]);
 
@@ -65,110 +79,171 @@ const ClaimsSubmit: React.FC = () => {
     };
 
     return (
-        <div className="ai-page-container">
-            {/* Sidebar */}
-            <aside className="ai-sidebar-strip">
-                <div className="sidebar-top">
-                    <button className="sidebar-icon-btn active"><span className="icon">+</span></button>
-                    <button className="sidebar-icon-btn"><span className="icon">S</span></button>
-                    <button className="sidebar-icon-btn"><span className="icon">E</span></button>
-                </div>
-                <div className="sidebar-bottom">
-                    <div className="user-avatar-circle">N</div>
-                </div>
-            </aside>
-
-            {/* Main Chat Area */}
-            <main className="ai-main-card">
-                {messages.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="greeting-section">
-                            <h1>Hello, Ashrith</h1>
-                            <p>How can I help you verify today?</p>
+        <>
+            {isPageLoading && <TerminalLoader onComplete={handleLoaderComplete} />}
+            <div className="ai-page-container" style={{ opacity: isPageLoading ? 0 : 1, transition: 'opacity 0.5s ease' }}>
+                {/* Main Terminal Window */}
+                <main className="ai-main-card">
+                    <div className="terminal-header">
+                        <div className="terminal-controls">
+                            <span className="control close"></span>
+                            <span className="control minimize"></span>
+                            <span className="control maximize"></span>
                         </div>
-
-                        <div className="suggestions-grid">
-                            <div className="suggestion-card">
-                                <span className="card-icon">N</span>
-                                <p>Verify a recent news article</p>
-                            </div>
-                            <div className="suggestion-card">
-                                <span className="card-icon">C</span>
-                                <p>Check a crypto project</p>
-                            </div>
-                            <div className="suggestion-card">
-                                <span className="card-icon">S</span>
-                                <p>Analyze a social media post</p>
-                            </div>
-                            <div className="suggestion-card">
-                                <span className="card-icon">D</span>
-                                <p>Deepfake detection</p>
-                            </div>
-                        </div>
+                        <div className="terminal-title">visitor@verichain: ~</div>
                     </div>
-                ) : (
-                    <div className="chat-feed">
-                        {messages.map((msg, idx) => (
-                            <div key={idx} className={`message-bubble ${msg.role}`}>
-                                {msg.text && <div className="message-content">{msg.text}</div>}
-                                {msg.verdict && (
-                                    <div className="verdict-card">
-                                        <div className="verdict-header">
-                                            <div className={`verdict-status status-${msg.verdict.status}`}>
-                                                {msg.verdict.status}
-                                            </div>
-                                            <div className="confidence-score">
-                                                <span className="score-label">CONFIDENCE</span>
-                                                <span className="score-value">{msg.verdict.confidence}%</span>
-                                            </div>
+
+                    {messages.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="greeting-section">
+                                <p className="system-msg">Welcome to VeriChain OS v1.0.0 (GNU/Linux x86_64)</p>
+                                <br />
+                                <p className="system-msg"> * Documentation:  https://docs.verichain.ai</p>
+                                <p className="system-msg"> * Status:         SYSTEM ONLINE</p>
+                                <p className="system-msg"> * Security:       ENCRYPTED</p>
+                                <br />
+                                <p className="system-msg">System information as of {new Date().toUTCString()}</p>
+                                <br />
+                                <p className="system-msg">VeriChain AI Protocol initialized...</p>
+                                <p className="system-msg">Type 'help' to see available commands.</p>
+                            </div>
+
+                            <div className="suggestions-grid">
+                                <div className="suggestion-card" onClick={() => setInputValue("./verify_news.sh")}>
+                                    <span className="command-prefix">./</span>
+                                    <p>verify_news.sh</p>
+                                </div>
+                                <div className="suggestion-card" onClick={() => setInputValue("./check_crypto.sh")}>
+                                    <span className="command-prefix">./</span>
+                                    <p>check_crypto.sh</p>
+                                </div>
+                                <div className="suggestion-card" onClick={() => setInputValue("./analyze_social.sh")}>
+                                    <span className="command-prefix">./</span>
+                                    <p>analyze_social.sh</p>
+                                </div>
+                                <div className="suggestion-card" onClick={() => setInputValue("./detect_deepfake.sh")}>
+                                    <span className="command-prefix">./</span>
+                                    <p>detect_deepfake.sh</p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="chat-feed">
+                            {messages.map((msg, idx) => (
+                                <div key={idx} className={`message-bubble ${msg.role}`}>
+                                    {msg.role === 'user' ? (
+                                        <div className="message-content">
+                                            <span className="prompt-user">visitor@verichain</span>
+                                            <span className="prompt-sep">:</span>
+                                            <span className="prompt-path">~</span>
+                                            <span className="prompt-sign">$</span>
+                                            <span className="command-text">{msg.text}</span>
                                         </div>
-                                        <p className="verdict-explanation">
-                                            {msg.verdict.explanation}
-                                        </p>
-                                        <div className="evidence-section">
-                                            <h4>Key Evidence</h4>
-                                            <ul className="evidence-list">
-                                                {msg.verdict.evidence.map((item, i) => (
-                                                    <li key={i} className="evidence-item">
-                                                        <span className="evidence-icon">✓</span>
-                                                        {item}
-                                                    </li>
-                                                ))}
-                                            </ul>
+                                    ) : (
+                                        <div className="message-content system-output">
+                                            {msg.verdict && (
+                                                <div className="verdict-card">
+                                                    <div className="verdict-header">
+                                                        <div className={`verdict-status status-${msg.verdict.status}`}>
+                                                            [{msg.verdict.status.toUpperCase()}]
+                                                        </div>
+                                                        <div className="confidence-score">
+                                                            CONFIDENCE: {msg.verdict.confidence}%
+                                                        </div>
+                                                    </div>
+                                                    <p className="verdict-explanation">
+                                                        {msg.verdict.explanation}
+                                                    </p>
+                                                    <div className="evidence-section">
+                                                        <h4>EVIDENCE_LOG:</h4>
+                                                        <ul className="evidence-list">
+                                                            {msg.verdict.evidence.map((item, i) => (
+                                                                <li key={i} className="evidence-item">
+                                                                    <span className="evidence-icon">[+]</span>
+                                                                    {item}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
+                                    )}
+                                </div>
+                            ))}
+                            {isProcessing && (
+                                <div className="thinking-state">
+                                    <span>{loadingText}</span>
+                                    <span className="cursor-block">█</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Input Area */}
+                    <div className="chat-input-container">
+                        <div className="chat-input-wrapper">
+                            <span className="prompt-user">visitor@verichain</span>
+                            <span className="prompt-sep">:</span>
+                            <span className="prompt-path">~</span>
+                            <span className="prompt-sign">$</span>
+
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '10px' }}>
+                                {attachedFile && (
+                                    <div className="file-preview">
+                                        <span>[ATTACHED: {attachedFile.name}]</span>
+                                        <button onClick={() => {
+                                            setAttachedFile(null);
+                                            if (fileInputRef.current) fileInputRef.current.value = '';
+                                        }}>
+                                            [x]
+                                        </button>
+                                    </div>
+                                )}
+                                <input
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="attach-container">
+                                <button
+                                    className="attach-btn"
+                                    onClick={() => setShowAttachMenu(!showAttachMenu)}
+                                >
+                                    <IoAdd size={24} />
+                                </button>
+                                {showAttachMenu && (
+                                    <div className="attach-menu">
+                                        <button onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}>
+                                            Upload File
+                                        </button>
+                                        <button onClick={() => { setInputValue("Link: "); setShowAttachMenu(false); }}>
+                                            Submit Link
+                                        </button>
                                     </div>
                                 )}
                             </div>
-                        ))}
-                        {isProcessing && (
-                            <div className="thinking-state">
-                                <div className="infinity-loader"></div>
-                                <span>{loadingText}</span>
-                            </div>
-                        )}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                style={{ display: 'none' }}
+                                accept="image/*,video/*,audio/*"
+                                onChange={(e) => {
+                                    if (e.target.files?.[0]) setAttachedFile(e.target.files[0]);
+                                }}
+                            />
+                            <button className="send-btn" onClick={handleSendMessage} style={{ background: 'transparent', border: 'none', color: '#8ae234', cursor: 'pointer', marginLeft: '10px' }}>
+                                <IoSend size={24} />
+                            </button>
+                        </div>
                     </div>
-                )}
-
-                {/* Input Area */}
-                <div className="chat-input-container">
-                    <div className="chat-input-wrapper">
-                        <button className="attach-btn"><span className="icon">+</span></button>
-                        <input
-                            type="text"
-                            placeholder="Ask anything..."
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                        />
-                        <button className="send-btn" onClick={handleSendMessage}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </main>
-        </div>
+                </main>
+            </div>
+        </>
     );
 };
 

@@ -77,4 +77,35 @@ router.post('/submit', async (req, res) => {
     }
 });
 
+router.get('/explore', async (req, res) => {
+    // Mock data for explore page
+    const claims = [
+        {
+            id: 1,
+            title: "AI in Healthcare",
+            content: "AI will revolutionize healthcare in the next decade",
+            status: "verified",
+            confidence: 87,
+            views: 234
+        },
+        {
+            id: 2,
+            title: "Bitcoin Prediction",
+            content: "Bitcoin will reach $100k by Q1 2026",
+            status: "pending",
+            confidence: 78,
+            views: 89
+        },
+        {
+            id: 3,
+            title: "Climate Action",
+            content: "Renewable energy will surpass fossil fuels by 2030",
+            status: "verified",
+            confidence: 92,
+            views: 512
+        }
+    ];
+    res.json(claims);
+});
+
 export default router;

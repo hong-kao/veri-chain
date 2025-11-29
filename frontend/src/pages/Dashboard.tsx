@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import "./Dashboard.css";
 
 export default function Dashboard() {
-    const { authType, walletAddress, oauthUser, canVote, connectWalletForOAuth } = useAuth();
+    const { authType, walletAddress, oauthUser, canVote, connectWalletForOAuth, logout } = useAuth();
     const [connectingWallet, setConnectingWallet] = useState(false);
 
     const [user, setUser] = useState({
@@ -59,6 +59,27 @@ export default function Dashboard() {
                     <Link to="/leaderboard" className="nav-link">
                         Leaderboard
                     </Link>
+                    <Link to="/explore" className="nav-link">
+                        Explore
+                    </Link>
+                    <Link to="/notifications" className="nav-link">
+                        Notifications
+                    </Link>
+                    <button
+                        onClick={logout}
+                        className="nav-link"
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            fontSize: 'inherit',
+                            padding: '0.5rem 1rem',
+                            color: 'rgba(255, 255, 255, 0.7)'
+                        }}
+                    >
+                        Logout
+                    </button>
                 </div>
             </nav>
 
