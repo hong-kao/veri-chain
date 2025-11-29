@@ -1,12 +1,17 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+from datetime import datetime
+from typing import Optional, List
 
 class UserBase(BaseModel):
+    wallet_address: str
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
-    wallet_address: Optional[str] = None
-    reddit_handle: Optional[str] = None
-    x_handle: Optional[str] = None
+    reddit_profile: Optional[str] = None
+    x_profile: Optional[str] = None
+    farcaster_profile: Optional[str] = None
+    notif_type: Optional[str] = "standard"
+    interests: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -28,8 +33,9 @@ class WalletLogin(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    auth_type: str
-    is_active: bool
+    reputation_score: int
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

@@ -4,7 +4,7 @@ import os
 
 # Database URL - Update with your actual credentials
 # Format: postgresql+asyncpg://user:password@host/dbname
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/verichain_auth")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:Sh0310@localhost/verichain_auth")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 
