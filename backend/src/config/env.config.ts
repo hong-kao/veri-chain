@@ -37,4 +37,5 @@ export const env = {
     STAKING_VOTING_ADDRESS: process.env.STAKING_VOTING_ADDRESS || "",
     NODEMAILER_USER: process.env.NODEMAILER_USER || "",
     NODEMAILER_PASSWORD: process.env.NODEMAILER_PASSWORD || "",
+    JWT_SECRET: process.env.JWT_SECRET || "",
 }

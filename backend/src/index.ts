@@ -3,6 +3,7 @@ import cors from "cors";
 import { env } from "./config/env.config.js";
 import analyzeRoutes from "./routes/analyze.routes.js";
 import claimRoutes from "./routes/claim.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 import { connectDb } from "./config/db.config.js";
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/uploads', express.static('uploads'));
 //routes
 app.use("/api", analyzeRoutes);
 app.use("/api/claims", claimRoutes);
+app.use("/api/auth", authRoutes);
 
 //health check
 app.get("/", (req, res) => {
@@ -36,6 +38,10 @@ app.get("/", (req, res) => {
       submitClaim: "POST /api/claims/submit",
       claimStatus: "GET /api/claims/:claimId/status",
       claimDetails: "GET /api/claims/:claimId",
+      // Auth endpoints
+      signup: "POST /api/auth/signup",
+      getProfile: "GET /api/auth/me",
+      verifyWallet: "POST /api/auth/verify-wallet",
       // Legacy endpoints
       analyze: "POST /api/analyze",
       batch: "POST /api/analyze/batch"

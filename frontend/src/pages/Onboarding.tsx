@@ -29,6 +29,7 @@ export default function Onboarding() {
         bio: "",
         reddit: "",
         twitter: "",
+        email: "", // Add email for wallet users
     });
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -54,7 +55,7 @@ export default function Onboarding() {
         const onboardingData = {
             authType,
             walletAddress: authType === 'wallet' ? walletAddress : undefined,
-            email: authType === 'oauth' ? oauthUser?.email : undefined,
+            email: authType === 'oauth' ? oauthUser?.email : profile.email,
             name: oauthUser?.name || profile.displayName,
             displayName: profile.displayName || oauthUser?.name || "User",
             bio: profile.bio,
@@ -66,8 +67,8 @@ export default function Onboarding() {
         };
 
         try {
-            // Send POST request to backend
-            const response = await fetch('http://localhost:3000/signup', {
+            // Send POST request to backend auth service
+            const response = await fetch('http://localhost:8080/api/auth/signup', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -81,6 +82,11 @@ export default function Onboarding() {
 
             const result = await response.json();
             console.log('Onboarding submitted successfully:', result);
+
+            // Save token to localStorage
+            if (result.token) {
+                localStorage.setItem('verichain-token', result.token);
+            }
 
             // Save to localStorage
             localStorage.setItem(
@@ -300,6 +306,20 @@ export default function Onboarding() {
                                         }
                                     />
                                 </div>
+
+                                {authType === 'wallet' && (
+                                    <div className="form-group">
+                                        <label>Email Address</label>
+                                        <input
+                                            type="email"
+                                            placeholder="your.email@example.com"
+                                            value={profile.email}
+                                            onChange={(e) =>
+                                                setProfile({ ...profile, email: e.target.value })
+                                            }
+                                        />
+                                    </div>
+                                )}
 
                                 <div className="form-group">
                                     <label>Bio (150 chars)</label>

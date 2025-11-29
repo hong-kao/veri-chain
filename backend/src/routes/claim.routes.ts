@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../generated/prisma/index.js';
 import ResultOrchestrator from '../agents/resultAgentOrchestrator.js';
 import { env } from '../config/env.config.js';
 
@@ -200,7 +200,7 @@ router.get('/:claimId/status', async (req, res) => {
                 aiVerdict,
                 aiConfidence: confidence,
                 finalVerdict,
-                agentResults: claim.agentResults.map(ar => ({
+                agentResults: claim.agentResults.map((ar: any) => ({
                     agent: ar.agentType,
                     verdict: ar.verdict,
                     confidence: ar.confidence,
