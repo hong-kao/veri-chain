@@ -8,7 +8,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 
 const llm = new ChatGoogleGenerativeAI({
     apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-2.0-flash"
+    model: "gemini-pro-latest"
 });
 
 const multiply = tool(

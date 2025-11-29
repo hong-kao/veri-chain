@@ -23,7 +23,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ onComplete }) => {
 
     useEffect(() => {
         const startTime = Date.now();
-        const minDuration = 10000; // 10 seconds minimum
+        const minDuration = 5000; // 5 seconds max as per user request
 
         let current = 0;
         const simulateNetworkLoad = () => {

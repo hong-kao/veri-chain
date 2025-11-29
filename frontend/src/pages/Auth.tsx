@@ -17,15 +17,8 @@ export default function Auth() {
 
         try {
             await connectWallet();
-
-            // Check if first time user
-            const isFirstTime = !localStorage.getItem("claims-user-profile");
-
-            if (isFirstTime) {
-                navigate("/onboarding");
-            } else {
-                navigate("/dashboard");
-            }
+            // ProtectedRoute will handle redirect to onboarding if needed
+            navigate("/dashboard");
         } catch (err: any) {
             setError(err.message || "Failed to connect wallet. Please try again.");
             setLoading(false);

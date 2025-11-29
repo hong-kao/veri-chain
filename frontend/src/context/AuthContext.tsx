@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 
+import { api } from '../services/api';
+
+declare global {
+    interface Window {
+        ethereum: any;
+    }
+}
+
 export interface AuthState {
     authType: 'wallet' | 'oauth' | null;
     walletAddress?: string;
@@ -10,10 +18,17 @@ export interface AuthState {
         picture?: string;
     };
     isConnected: boolean;
-    canVote: boolean; // true if wallet connected (either directly or after OAuth)
+    canVote: boolean;
+    token?: string; // Added token
 }
 
 interface AuthContextType extends AuthState {
+    user: {
+        displayName: string;
+        email?: string;
+        walletAddress?: string;
+        profileImage?: string;
+    };
     connectWallet: () => Promise<void>;
     disconnectWallet: () => void;
     loginWithOAuth: (strategy: 'oauth_google' | 'oauth_reddit') => void;
@@ -47,43 +62,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    // Sync Clerk state with local state
+    // Sync Clerk state with local state and call backend
     useEffect(() => {
-        if (isClerkLoaded && isClerkSignedIn && clerkUser) {
-            setAuthState(prev => ({
-                ...prev,
-                authType: 'oauth',
-                isConnected: true,
-                oauthUser: {
-                    email: clerkUser.primaryEmailAddress?.emailAddress || '',
-                    name: clerkUser.fullName || clerkUser.username || '',
-                    picture: clerkUser.imageUrl,
-                },
-                // Keep existing wallet info if present
-                walletAddress: prev.walletAddress,
-                canVote: !!prev.walletAddress,
-            }));
-        } else if (isClerkLoaded && !isClerkSignedIn && authState.authType === 'oauth') {
-            // If Clerk signs out, clear oauth state but keep wallet if it was separate? 
-            // For now, let's just clear if it was oauth.
-            setAuthState(prev => ({
-                ...prev,
-                authType: prev.walletAddress ? 'wallet' : null,
-                isConnected: !!prev.walletAddress,
-                oauthUser: undefined,
-                canVote: !!prev.walletAddress
-            }));
-        }
+        const syncAuth = async () => {
+            if (isClerkLoaded && isClerkSignedIn && clerkUser) {
+                try {
+                    const email = clerkUser.primaryEmailAddress?.emailAddress || '';
+                    const name = clerkUser.fullName || clerkUser.username || '';
+
+                    // Call backend to get token
+                    const response = await api.socialLogin(email, name);
+
+                    setAuthState(prev => ({
+                        ...prev,
+                        authType: 'oauth',
+                        isConnected: true,
+                        oauthUser: {
+                            email,
+                            name,
+                            picture: clerkUser.imageUrl,
+                        },
+                        token: response.access_token,
+                        // Keep existing wallet info if present
+                        walletAddress: prev.walletAddress,
+                        canVote: !!prev.walletAddress,
+                    }));
+                } catch (error) {
+                    console.error('Backend login failed:', error);
+                }
+            } else if (isClerkLoaded && !isClerkSignedIn && authState.authType === 'oauth') {
+                setAuthState(prev => ({
+                    ...prev,
+                    authType: prev.walletAddress ? 'wallet' : null,
+                    isConnected: !!prev.walletAddress,
+                    oauthUser: undefined,
+                    canVote: !!prev.walletAddress,
+                    token: undefined
+                }));
+            }
+        };
+
+        syncAuth();
     }, [isClerkLoaded, isClerkSignedIn, clerkUser]);
 
-    // Save auth state to localStorage whenever it changes
-    useEffect(() => {
-        if (authState.isConnected) {
-            localStorage.setItem('verichain-auth', JSON.stringify(authState));
-        } else {
-            localStorage.removeItem('verichain-auth');
-        }
-    }, [authState]);
+    // ... (localStorage effect remains same)
 
     const connectWallet = async () => {
         try {
@@ -99,11 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const address = accounts[0];
 
+            // Call backend
+            const response = await api.walletLogin(address);
+
             setAuthState({
                 authType: 'wallet',
                 walletAddress: address,
                 isConnected: true,
                 canVote: true,
+                token: response.access_token
             });
         } catch (error) {
             console.error('Wallet connection failed:', error);
@@ -162,10 +188,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut();
     };
 
+    const user = {
+        displayName: authState.oauthUser?.name || (authState.walletAddress ? `${authState.walletAddress.slice(0, 6)}...${authState.walletAddress.slice(-4)}` : 'Guest'),
+        email: authState.oauthUser?.email,
+        walletAddress: authState.walletAddress,
+        profileImage: authState.oauthUser?.picture
+    };
+
     return (
         <AuthContext.Provider
             value={{
                 ...authState,
+                user,
                 connectWallet,
                 disconnectWallet,
                 loginWithOAuth,

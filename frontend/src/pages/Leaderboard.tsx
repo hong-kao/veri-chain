@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import "./Dashboard.css";
-import "./Leaderboard.css";
+import { useAuth } from "../context/AuthContext";
+import "../styles/TerminalStyles.css";
 
 interface LeaderboardUser {
     rank: number;
@@ -13,6 +13,7 @@ interface LeaderboardUser {
 }
 
 export default function Leaderboard() {
+    const { user } = useAuth();
     const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -29,99 +30,68 @@ export default function Leaderboard() {
             });
     }, []);
 
-    const topThree = leaderboard.slice(0, 3);
-    const rest = leaderboard.slice(3);
-
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link active">
-                        Leaderboard
-                    </Link>
-                    <Link to="/explore" className="nav-link">
-                        Explore
-                    </Link>
-                    <Link to="/notifications" className="nav-link">
-                        Notifications
-                    </Link>
-                </div>
-            </nav>
-
-            <div className="dashboard-container">
-                <h1 className="leaderboard-title">Top Truth Seekers</h1>
-
-                <div className="leaderboard-filters">
-                    <button className="filter-btn active">All Time</button>
-                    <button className="filter-btn">This Month</button>
-                    <button className="filter-btn">This Week</button>
+        <div className="terminal-page-container">
+            <div className="terminal-window crt">
+                {/* Window Header */}
+                <div className="terminal-header">
+                    <div className="terminal-controls">
+                        <span className="control close"></span>
+                        <span className="control minimize"></span>
+                        <span className="control maximize"></span>
+                    </div>
+                    <div className="terminal-title">user@{user.displayName || 'guest'}:~/node_rankings</div>
                 </div>
 
-                {loading ? (
-                    <p>Loading leaderboard...</p>
-                ) : (
-                    <>
-                        <div className="podium">
-                            {topThree[1] && (
-                                <div className="podium-place second">
-                                    <div className="podium-avatar">{topThree[1].name.charAt(0)}</div>
-                                    <div className="podium-name">{topThree[1].name}</div>
-                                    <div className="podium-points">{topThree[1].points.toLocaleString()}</div>
-                                </div>
-                            )}
-                            {topThree[0] && (
-                                <div className="podium-place first">
-                                    <div className="podium-avatar">{topThree[0].name.charAt(0)}</div>
-                                    <div className="podium-name">{topThree[0].name}</div>
-                                    <div className="podium-points">{topThree[0].points.toLocaleString()}</div>
-                                </div>
-                            )}
-                            {topThree[2] && (
-                                <div className="podium-place third">
-                                    <div className="podium-avatar">{topThree[2].name.charAt(0)}</div>
-                                    <div className="podium-name">{topThree[2].name}</div>
-                                    <div className="podium-points">{topThree[2].points.toLocaleString()}</div>
-                                </div>
-                            )}
-                        </div>
+                {/* Navigation */}
+                <nav className="terminal-nav">
+                    <Link to="/dashboard" className="term-link">System_Status</Link>
+                    <Link to="/claims" className="term-link">Verification_Logs</Link>
+                    <Link to="/leaderboard" className="term-link active">Node_Rankings</Link>
+                    <Link to="/explore" className="term-link">Network_Activity</Link>
+                    <Link to="/notifications" className="term-link">Sys_Alerts</Link>
+                </nav>
 
-                        <div className="leaderboard-list">
-                            {rest.map((user) => (
-                                <div
-                                    key={user.rank}
-                                    className={`leaderboard-card ${user.isCurrentUser ? "current-user" : ""}`}
-                                >
-                                    <div className="rank-number">#{user.rank}</div>
-                                    <div className="user-avatar">{user.name.charAt(0)}</div>
-                                    <div className="user-details">
-                                        <div className="user-name">{user.name}</div>
-                                        <div className="user-stats">
-                                            {user.accuracy}% accuracy • {user.points.toLocaleString()} points
-                                        </div>
-                                    </div>
-                                    <div className="rank-change">
-                                        {user.change > 0 && (
-                                            <span className="change-up">↑ +{user.change}</span>
-                                        )}
-                                        {user.change < 0 && (
-                                            <span className="change-down">↓ {user.change}</span>
-                                        )}
-                                        {user.change === 0 && <span className="change-same">—</span>}
-                                    </div>
-                                </div>
-                            ))}
+                {/* Content */}
+                <div className="terminal-content">
+                    <h1 className="term-h1">TOP_PERFORMING_NODES</h1>
+
+                    {loading ? (
+                        <div className="term-text">CALCULATING_METRICS...</div>
+                    ) : (
+                        <div className="term-card" style={{ padding: 0 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--term-border)' }}>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>RANK</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>NODE_ID</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>REPUTATION</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>ACCURACY</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>TREND</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {leaderboard.map((user) => (
+                                        <tr key={user.rank} style={{
+                                            borderBottom: '1px dashed var(--term-border)',
+                                            background: user.isCurrentUser ? 'rgba(138, 226, 52, 0.1)' : 'transparent'
+                                        }}>
+                                            <td style={{ padding: '1rem', fontFamily: 'monospace', fontWeight: 'bold' }}>#{user.rank}</td>
+                                            <td style={{ padding: '1rem', color: user.isCurrentUser ? 'var(--term-green)' : 'inherit' }}>
+                                                {user.name} {user.isCurrentUser && '(YOU)'}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>{user.points.toLocaleString()}</td>
+                                            <td style={{ padding: '1rem' }}>{user.accuracy}%</td>
+                                            <td style={{ padding: '1rem', color: user.change > 0 ? 'var(--term-green)' : user.change < 0 ? 'var(--term-red)' : 'var(--term-gray)' }}>
+                                                {user.change > 0 ? `+${user.change}` : user.change}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    </>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );

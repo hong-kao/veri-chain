@@ -2,10 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from .database import engine, Base, get_db
-from .models import User
-from .schemas import UserCreate, UserLogin, WalletLogin, UserResponse, Token
-from .auth import get_password_hash, verify_password, create_access_token
+from database import engine, Base, get_db
+from models import User
+from schemas import UserCreate, UserLogin, WalletLogin, UserResponse, Token, AuthResponse, SocialLogin, UserOnboarding
+from auth import create_access_token, get_current_user
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -31,45 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/auth/signup", response_model=UserResponse)
-async def signup(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    # Check if user exists
-    result = await db.execute(select(User).where(User.email == user.email))
-    existing_user = result.scalars().first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create new user
-    hashed_password = get_password_hash(user.password)
-    db_user = User(
-        email=user.email,
-        password_hash=hashed_password,
-        full_name=user.full_name,
-        reddit_handle=user.reddit_handle,
-        x_handle=user.x_handle,
-        auth_type="email"
-    )
-    db.add(db_user)
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
+# @app.post("/auth/signup") - Removed as password auth is not supported
+# @app.post("/auth/login") - Removed as password auth is not supported
 
-@app.post("/auth/login", response_model=Token)
-async def login(user_credentials: UserLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == user_credentials.email))
-    user = result.scalars().first()
-    
-    if not user or not verify_password(user_credentials.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.post("/auth/wallet-login", response_model=UserResponse)
+@app.post("/auth/wallet-login", response_model=AuthResponse)
 async def wallet_login(data: WalletLogin, db: AsyncSession = Depends(get_db)):
     # Check if user exists by wallet address
     result = await db.execute(select(User).where(User.wallet_address == data.walletAddress))
@@ -81,9 +46,9 @@ async def wallet_login(data: WalletLogin, db: AsyncSession = Depends(get_db)):
             wallet_address=data.walletAddress,
             email=data.email,
             full_name=data.name or data.displayName,
-            reddit_handle=data.redditHandle,
-            x_handle=data.xHandle,
-            auth_type="wallet"
+            reddit_profile=data.redditHandle,
+            x_profile=data.xHandle,
+            # auth_type="wallet" # Not in DB
         )
         db.add(user)
         await db.commit()
@@ -92,12 +57,48 @@ async def wallet_login(data: WalletLogin, db: AsyncSession = Depends(get_db)):
         # Update existing user info if provided
         if data.email: user.email = data.email
         if data.name: user.full_name = data.name
-        if data.redditHandle: user.reddit_handle = data.redditHandle
-        if data.xHandle: user.x_handle = data.xHandle
+        if data.redditHandle: user.reddit_profile = data.redditHandle
+        if data.xHandle: user.x_profile = data.xHandle
         await db.commit()
         await db.refresh(user)
         
-    return user
+    access_token = create_access_token(data={"sub": user.email if user.email else user.wallet_address})
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
+
+@app.post("/auth/social-login", response_model=AuthResponse)
+async def social_login(data: SocialLogin, db: AsyncSession = Depends(get_db)):
+    # Check if user exists by email
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalars().first()
+    
+    if not user:
+        # Create new user
+        user = User(
+            email=data.email,
+            full_name=data.full_name,
+            # auth_type=data.auth_type # Not in DB
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
+
+@app.post("/auth/onboarding", response_model=UserResponse)
+async def onboarding(data: UserOnboarding, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Update user with onboarding data
+    current_user.interests = data.interests
+    current_user.notif_type = data.notif_type
+    
+    if data.full_name:
+        current_user.full_name = data.full_name
+    if data.email and not current_user.email:
+        current_user.email = data.email
+        
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
 
 @app.get("/auth/google")
 async def google_auth():

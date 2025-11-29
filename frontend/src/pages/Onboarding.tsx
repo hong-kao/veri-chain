@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import "./Onboarding.css";
 
@@ -14,7 +15,7 @@ const CATEGORIES = [
 
 export default function Onboarding() {
     const navigate = useNavigate();
-    const { authType, walletAddress, oauthUser } = useAuth();
+    const { authType, walletAddress, oauthUser, token } = useAuth();
 
     const [currentSlide, setCurrentSlide] = useState(0);
     const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
@@ -66,21 +67,14 @@ export default function Onboarding() {
         };
 
         try {
-            // Send POST request to backend
-            const response = await fetch('http://localhost:3000/signup', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(onboardingData),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}`);
+            if (!token) {
+                throw new Error("Authentication token missing. Please login again.");
             }
 
-            const result = await response.json();
-            console.log('Onboarding submitted successfully:', result);
+            // Send POST request to backend using api service
+            await api.submitOnboarding(token, onboardingData);
+
+            console.log('Onboarding submitted successfully');
 
             // Save to localStorage
             localStorage.setItem(
@@ -139,61 +133,52 @@ export default function Onboarding() {
         <div className="onboarding-page">
             <div className="onboarding-container">
                 <div className="onboarding-header">
+                    <div className="logo-small">VeriChain</div>
                     <button className="skip-button" onClick={handleSkip}>
-                        Skip
+                        Skip Setup
                     </button>
                 </div>
 
-                <div className="progress-dots">
-                    {[0, 1, 2, 3].map((i) => (
+                <div className="progress-bar-container">
+                    <div className="progress-track">
                         <div
-                            key={i}
-                            className={`progress-dot ${i === currentSlide ? "active" : ""} ${i < currentSlide ? "completed" : ""
-                                }`}
-                        />
-                    ))}
+                            className="progress-fill"
+                            style={{ width: `${((currentSlide + 1) / 4) * 100}%` }}
+                        ></div>
+                    </div>
                 </div>
 
                 {error && (
-                    <div style={{
-                        padding: '1rem',
-                        background: 'rgba(244, 63, 94, 0.1)',
-                        border: '1px solid rgba(244, 63, 94, 0.3)',
-                        borderRadius: '0.5rem',
-                        color: '#f43f5e',
-                        marginBottom: '1rem',
-                    }}>
+                    <div className="error-banner">
                         {error}
                     </div>
                 )}
 
                 <div className="slides-container">
                     {currentSlide === 0 && (
-                        <div className="slide">
-                            <h1>Welcome to VeriChain!</h1>
-                            <p>Let's personalize your experience in just a few quick steps.</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Welcome to VeriChain</h1>
+                            <p className="slide-subtitle">Let's personalize your experience in just a few quick steps.</p>
                             <div className="welcome-animation">
-                                <div className="welcome-icon">✓</div>
+                                <div className="welcome-circle">
+                                    <span className="welcome-icon">✓</span>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {currentSlide === 1 && (
-                        <div className="slide">
-                            <h1>What topics interest you?</h1>
-                            <p>Select at least 3 topics</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">What interests you?</h1>
+                            <p className="slide-subtitle">Select at least 3 topics to customize your feed</p>
                             <div className="interests-grid">
                                 {CATEGORIES.map((category) => (
                                     <button
                                         key={category.id}
-                                        className={`interest-card ${selectedInterests.includes(category.id) ? "selected" : ""
-                                            }`}
+                                        className={`interest-card ${selectedInterests.includes(category.id) ? "selected" : ""}`}
                                         onClick={() => toggleInterest(category.id)}
                                     >
                                         <span className="interest-label">{category.label}</span>
-                                        {selectedInterests.includes(category.id) && (
-                                            <span className="checkmark">✓</span>
-                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -201,93 +186,62 @@ export default function Onboarding() {
                     )}
 
                     {currentSlide === 2 && (
-                        <div className="slide">
-                            <h1>Stay informed, your way</h1>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Stay informed</h1>
+                            <p className="slide-subtitle">Choose how you want to be notified</p>
                             <div className="notifications-list">
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Claim status updates</div>
-                                        <div className="notification-desc">
-                                            Get notified when your claims are verified
-                                        </div>
+                                        <div className="notification-desc">Get notified when your claims are verified</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.claimStatus}
-                                        onChange={(e) =>
-                                            setNotifications({ ...notifications, claimStatus: e.target.checked })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.claimStatus}
+                                            onChange={(e) => setNotifications({ ...notifications, claimStatus: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </div>
                                 </label>
 
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Leaderboard changes</div>
-                                        <div className="notification-desc">
-                                            Know when your rank changes
-                                        </div>
+                                        <div className="notification-desc">Know when your rank changes</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.leaderboardChanges}
-                                        onChange={(e) =>
-                                            setNotifications({
-                                                ...notifications,
-                                                leaderboardChanges: e.target.checked,
-                                            })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.leaderboardChanges}
+                                            onChange={(e) => setNotifications({ ...notifications, leaderboardChanges: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </div>
                                 </label>
 
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Weekly digest</div>
-                                        <div className="notification-desc">
-                                            Summary of your activity
-                                        </div>
+                                        <div className="notification-desc">Summary of your activity</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.weeklyDigest}
-                                        onChange={(e) =>
-                                            setNotifications({ ...notifications, weeklyDigest: e.target.checked })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-
-                                <label className="notification-item">
-                                    <div>
-                                        <div className="notification-title">New achievements</div>
-                                        <div className="notification-desc">
-                                            Celebrate your milestones
-                                        </div>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.weeklyDigest}
+                                            onChange={(e) => setNotifications({ ...notifications, weeklyDigest: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.newAchievements}
-                                        onChange={(e) =>
-                                            setNotifications({
-                                                ...notifications,
-                                                newAchievements: e.target.checked,
-                                            })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
                                 </label>
                             </div>
-                            <p className="settings-note">
-                                You can change these anytime in settings
-                            </p>
                         </div>
                     )}
 
                     {currentSlide === 3 && (
-                        <div className="slide">
-                            <h1>Make your profile stand out</h1>
-                            <p>Optional - you can skip this step</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Complete Profile</h1>
+                            <p className="slide-subtitle">Tell us a bit about yourself</p>
                             <div className="profile-form">
                                 <div className="form-group">
                                     <label>Display Name</label>
@@ -295,41 +249,21 @@ export default function Onboarding() {
                                         type="text"
                                         placeholder="Enter your name"
                                         value={profile.displayName}
-                                        onChange={(e) =>
-                                            setProfile({ ...profile, displayName: e.target.value })
-                                        }
+                                        onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
+                                        className="premium-input"
                                     />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Bio (150 chars)</label>
+                                    <label>Bio</label>
                                     <textarea
                                         placeholder="Tell us about yourself"
                                         maxLength={150}
                                         value={profile.bio}
                                         onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                                        className="premium-input"
                                     />
                                     <div className="char-count">{profile.bio.length}/150</div>
-                                </div>
-
-                                <div className="form-group">
-                                    <label>Reddit Account (Optional)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="u/username"
-                                        value={profile.reddit}
-                                        onChange={(e) => setProfile({ ...profile, reddit: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="form-group">
-                                    <label>X (Twitter) Account (Optional)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="@username"
-                                        value={profile.twitter}
-                                        onChange={(e) => setProfile({ ...profile, twitter: e.target.value })}
-                                    />
                                 </div>
                             </div>
                         </div>
@@ -339,11 +273,11 @@ export default function Onboarding() {
                 <div className="onboarding-actions">
                     {currentSlide > 0 && (
                         <button className="btn-back" onClick={handleBack} disabled={submitting}>
-                            ← Back
+                            Back
                         </button>
                     )}
                     <button className="btn-next" onClick={handleNext} disabled={submitting}>
-                        {submitting ? "SUBMITTING..." : (currentSlide === 3 ? "Enter Platform →" : "Next →")}
+                        {submitting ? "Submitting..." : (currentSlide === 3 ? "Complete Setup" : "Continue")}
                     </button>
                 </div>
             </div>

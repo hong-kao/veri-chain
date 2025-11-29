@@ -18,14 +18,9 @@ app.use((req, res, next) => {
   next();
 });
 
-import userRoutes from "./routes/user.routes.js";
-
-// ...
-
 //routes
 app.use("/api", analyzeRoutes);
 app.use("/api/claims", claimRoutes);
-app.use("/api/user", userRoutes);
 
 //health check
 app.get("/", (req, res) => {

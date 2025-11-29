@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
-import { ChatOpenAI } from '@langchain/openai';;
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
@@ -16,9 +16,9 @@ import {
     type SocialPost
 } from '../utils/socialFetcher.js';
 
-const llm = new ChatOpenAI({
-    apiKey: env.OPENAI_API_KEY || '',
-    model: "gpt-4o-mini",
+const llm = new ChatGoogleGenerativeAI({
+    apiKey: env.GEMINI_API_KEY || '',
+    model: "gemini-pro-latest",
     temperature: 0.2
 });
 

@@ -1,4 +1,4 @@
-import { ChatOpenAI } from '@langchain/openai';;
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { env } from '../config/env.config.js';
 
 // INPUT TYPES

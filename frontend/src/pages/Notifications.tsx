@@ -1,87 +1,67 @@
 import { Link } from "react-router-dom";
-import { useState, useEffect } from "react";
-import "./Dashboard.css";
-import "./Notifications.css";
+import { useAuth } from "../context/AuthContext";
+import "../styles/TerminalStyles.css";
 
-interface Notification {
-    id: number;
-    type: string;
-    title: string;
-    message: string;
-    time: string;
-    read: boolean;
-}
+const MOCK_NOTIFICATIONS = [
+    { id: 1, type: 'success', title: 'Claim Verified', message: 'Your claim #1234 has been verified by the network.', time: '2 mins ago' },
+    { id: 2, type: 'rank', title: 'Rank Increased', message: 'You have reached the Top 10% of nodes.', time: '1 hour ago' },
+    { id: 3, type: 'pending', title: 'Vote Required', message: 'Consensus needed for Claim #1235.', time: '3 hours ago' },
+];
 
 export default function Notifications() {
-    const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        fetch('http://localhost:3000/api/user/notifications')
-            .then(res => res.json())
-            .then(data => {
-                setNotifications(data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error("Failed to fetch notifications:", err);
-                setLoading(false);
-            });
-    }, []);
+    const { user } = useAuth();
 
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link">
-                        Leaderboard
-                    </Link>
-                    <Link to="/explore" className="nav-link">
-                        Explore
-                    </Link>
-                    <Link to="/notifications" className="nav-link active">
-                        Notifications
-                    </Link>
-                </div>
-            </nav>
-
-            <div className="dashboard-container">
-                <div className="notifications-header">
-                    <h1>Notifications</h1>
-                    <button className="btn-mark-all">Mark all as read</button>
+        <div className="terminal-page-container">
+            <div className="terminal-window crt">
+                {/* Window Header */}
+                <div className="terminal-header">
+                    <div className="terminal-controls">
+                        <span className="control close"></span>
+                        <span className="control minimize"></span>
+                        <span className="control maximize"></span>
+                    </div>
+                    <div className="terminal-title">user@{user.displayName || 'guest'}:~/sys_alerts</div>
                 </div>
 
-                <div className="notifications-list-container">
-                    {loading ? (
-                        <p>Loading notifications...</p>
-                    ) : (
-                        notifications.map((notif) => (
-                            <div
-                                key={notif.id}
-                                className={`notification-card ${notif.read ? "read" : "unread"}`}
-                            >
-                                <div className="notification-icon">
-                                    {notif.type === "success" && "✓"}
-                                    {notif.type === "rank" && "↑"}
-                                    {notif.type === "pending" && "..."}
+                {/* Navigation */}
+                <nav className="terminal-nav">
+                    <Link to="/dashboard" className="term-link">System_Status</Link>
+                    <Link to="/claims" className="term-link">Verification_Logs</Link>
+                    <Link to="/leaderboard" className="term-link">Node_Rankings</Link>
+                    <Link to="/explore" className="term-link">Network_Activity</Link>
+                    <Link to="/notifications" className="term-link active">Sys_Alerts</Link>
+                </nav>
+
+                {/* Content */}
+                <div className="terminal-content">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                        <h1 className="term-h1" style={{ marginBottom: 0 }}>SYSTEM_LOG_STREAM</h1>
+                        <button className="term-btn">CLEAR_LOGS</button>
+                    </div>
+
+                    <div className="term-grid" style={{ gap: '0.5rem' }}>
+                        {MOCK_NOTIFICATIONS.map((notif) => (
+                            <div key={notif.id} className="term-card" style={{ padding: '1rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                                <div style={{
+                                    color: notif.type === 'success' ? 'var(--term-green)' :
+                                        notif.type === 'rank' ? 'var(--term-purple)' : 'var(--term-yellow)',
+                                    fontWeight: 'bold'
+                                }}>
+                                    [{notif.type.toUpperCase()}]
                                 </div>
-                                <div className="notification-content">
-                                    <div className="notification-title">{notif.title}</div>
-                                    <div className="notification-message">{notif.message}</div>
-                                    <div className="notification-time">{notif.time}</div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ fontWeight: 'bold' }}>{notif.title}</span>
+                                        <span className="term-muted" style={{ fontSize: '0.8rem' }}>{notif.time}</span>
+                                    </div>
+                                    <div className="term-text" style={{ fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                                        {notif.message}
+                                    </div>
                                 </div>
                             </div>
-                        ))
-                    )}
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
