@@ -1,84 +1,21 @@
-// socialEvidenceAgent.ts
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';;
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
 import axios from 'axios';
+import { scrapeWebsite } from '../utils/scraper.js';
 
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-pro-latest",
+const llm = new ChatOpenAI({
+    apiKey: env.OPENAI_API_KEY || '',
+    model: "gpt-4o-mini",
     temperature: 0.2
 });
 
-class RedditAuthManager {
-    private accessToken: string | null = null;
-    private accessTokenExpiry: number = 0;
-    private refreshToken: string;
-    private clientId: string;
-    private clientSecret: string;
-
-    constructor() {
-        this.refreshToken = env.REDDIT_REFRESH_TOKEN || '';
-        this.clientId = env.REDDIT_CLIENT_ID || '';
-        this.clientSecret = env.REDDIT_CLIENT_SECRET || '';
-    }
-
-    async getAccessToken(): Promise<string> {
-        // Check if current token is still valid (with 5 min buffer)
-        if (this.accessToken && Date.now() < this.accessTokenExpiry - 5 * 60 * 1000) {
-            return this.accessToken;
-        }
-
-        // Refresh the access token
-        return await this.refreshAccessToken();
-    }
-
-    private async refreshAccessToken(): Promise<string> {
-        try {
-            const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-
-            const response = await axios.post(
-                'https://www.reddit.com/api/v1/access_token',
-                new URLSearchParams({
-                    grant_type: 'refresh_token',
-                    refresh_token: this.refreshToken
-                }),
-                {
-                    headers: {
-                        'Authorization': `Basic ${auth}`,
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'User-Agent': 'VeriChain/1.0 by VeriChainBot'
-                    }
-                }
-            );
-
-            this.accessToken = response.data.access_token;
-            // Reddit tokens expire in 1 hour (3600 seconds)
-            this.accessTokenExpiry = Date.now() + (response.data.expires_in * 1000);
-
-            // If a new refresh token is provided, update it
-            if (response.data.refresh_token) {
-                this.refreshToken = response.data.refresh_token;
-                // In production, you'd want to persist this to your database
-                console.log('⚠️ New refresh token received - should be persisted to DB');
-            }
-
-            return this.accessToken !== null ? this.accessToken : '';
-        } catch (error: any) {
-            console.error('Reddit token refresh failed:', error.response?.data || error.message);
-            throw new Error(`Reddit authentication failed: ${error.message}`);
-        }
-    }
-}
-
-const redditAuth = new RedditAuthManager();
-
-
-const searchReddit = tool(
+// Scrape Reddit using web scraping instead of API
+const scrapeReddit = tool(
     async ({ query, subreddit, limit = 25, timeFilter = 'week', sortBy = 'relevance' }: {
         query: string;
         subreddit?: string;
@@ -87,153 +24,89 @@ const searchReddit = tool(
         sortBy?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
     }) => {
         try {
-            const accessToken = await redditAuth.getAccessToken();
+            // Build Reddit search URL
+            const baseUrl = subreddit
+                ? `https://www.reddit.com/r/${subreddit}/search`
+                : 'https://www.reddit.com/search';
 
-            const searchUrl = subreddit
-                ? `https://oauth.reddit.com/r/${subreddit}/search`
-                : 'https://oauth.reddit.com/search';
-
-            const response = await axios.get(searchUrl, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'User-Agent': 'VeriChain/1.0 by VeriChainBot'
-                },
-                params: {
-                    q: query,
-                    limit: Math.min(limit, 100),
-                    sort: sortBy,
-                    t: timeFilter,
-                    restrict_sr: subreddit ? 'true' : 'false',
-                    type: 'link,self' // both links and text posts
-                }
+            const params = new URLSearchParams({
+                q: query,
+                sort: sortBy,
+                t: timeFilter,
+                ...(subreddit ? { restrict_sr: 'on' } : {})
             });
 
-            const posts = response.data.data.children.map((child: any) => {
-                const post = child.data;
-                return {
-                    id: post.id,
-                    title: post.title,
-                    author: post.author,
-                    subreddit: post.subreddit,
-                    url: `https://reddit.com${post.permalink}`,
-                    selftext: post.selftext?.substring(0, 500) || '', // limit text
-                    score: post.score,
-                    upvoteRatio: post.upvote_ratio,
-                    numComments: post.num_comments,
-                    created: new Date(post.created_utc * 1000).toISOString(),
-                    flair: post.link_flair_text || null,
-                    isVideo: post.is_video,
-                    domain: post.domain
-                };
+            const url = `${baseUrl}?${params.toString()}`;
+
+            console.log(`Scraping Reddit: ${url}`);
+
+            const result = await scrapeWebsite({
+                url,
+                extractType: 'full',
+                timeout: 15000,
+                waitForSelector: '[data-testid="post-container"], .Post',
+                removeElements: ['script', 'style', 'nav', 'footer', 'ads', 'iframe']
             });
+
+            if (!result.success) {
+                return JSON.stringify({
+                    error: 'Reddit scraping failed',
+                    message: result.error || 'Failed to load Reddit page',
+                    query,
+                    subreddit
+                });
+            }
+
+            // Simple parsing of scraped content - looking for post patterns
+            const content = result.content || '';
+            const posts = [];
+
+            // This is a simplified parser - in production you'd want more robust parsing
+            // Note: Reddit's HTML structure changes, so this is a basic example
+            const postMatches = content.match(/points.*?comments/gi) || [];
+            const limitedMatches = postMatches.slice(0, Math.min(limit, 25));
+
+            for (let i = 0; i < limitedMatches.length; i++) {
+                posts.push({
+                    id: `scraped_${i}`,
+                    title: `Post ${i + 1} from search results`,
+                    snippet: limitedMatches[i].substring(0, 200),
+                    url: url,
+                    note: 'Scraped content - limited metadata available'
+                });
+            }
 
             return JSON.stringify({
                 query,
                 subreddit: subreddit || 'all',
                 totalResults: posts.length,
-                posts
+                posts,
+                source: 'web_scraping',
+                note: 'Reddit API not available - using web scraping. Results are limited.'
             }, null, 2);
 
         } catch (error: any) {
-            console.error('Reddit search error:', error.response?.data || error.message);
+            console.error('Reddit scraping error:', error.message);
             return JSON.stringify({
-                error: 'Reddit search failed',
-                message: error.response?.data?.message || error.message,
-                query
+                error: 'Reddit scraping failed',
+                message: error.message,
+                query,
+                note: 'Consider using Reddit API if available, or implement more robust scraping'
             });
         }
     },
     {
-        name: "searchReddit",
-        description: "Search Reddit for posts and discussions related to a claim. Can search across all Reddit or within specific subreddits. Returns post titles, content, scores, and engagement metrics.",
+        name: "scrapeReddit",
+        description: "Scrape Reddit for posts and discussions using web scraping (no API). Returns limited information from search results. Note: May be unreliable compared to official API.",
         schema: z.object({
             query: z.string().describe("Search query for Reddit posts"),
             subreddit: z.string().optional().describe("Specific subreddit to search in (e.g., 'news', 'science')"),
-            limit: z.number().optional().default(25).describe("Number of posts to return (max 100)"),
+            limit: z.number().optional().default(25).describe("Number of posts to attempt to extract (max 25)"),
             timeFilter: z.enum(['hour', 'day', 'week', 'month', 'year', 'all']).optional().default('week'),
             sortBy: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).optional().default('relevance')
         })
     }
 );
-
-const getRedditComments = tool(
-    async ({ postId, sort = 'top', limit = 50 }: {
-        postId: string;
-        sort?: 'confidence' | 'top' | 'new' | 'controversial' | 'old' | 'qa';
-        limit?: number;
-    }) => {
-        try {
-            const accessToken = await redditAuth.getAccessToken();
-
-            // Get post details and comments
-            const response = await axios.get(
-                `https://oauth.reddit.com/comments/${postId}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'User-Agent': 'VeriChain/1.0 by VeriChainBot'
-                    },
-                    params: {
-                        sort,
-                        limit,
-                        depth: 3, // how deep to traverse comment tree
-                        showmore: true
-                    }
-                }
-            );
-
-            const postData = response.data[0].data.children[0].data;
-            const commentsData = response.data[1].data.children;
-
-            const comments = commentsData
-                .filter((child: any) => child.kind === 't1') // t1 = comment
-                .map((child: any) => {
-                    const comment = child.data;
-                    return {
-                        id: comment.id,
-                        author: comment.author,
-                        body: comment.body?.substring(0, 1000) || '', // limit
-                        score: comment.score,
-                        created: new Date(comment.created_utc * 1000).toISOString(),
-                        isSubmitter: comment.is_submitter,
-                        stickied: comment.stickied,
-                        depth: comment.depth,
-                        controversiality: comment.controversiality
-                    };
-                });
-
-            return JSON.stringify({
-                post: {
-                    id: postData.id,
-                    title: postData.title,
-                    author: postData.author,
-                    score: postData.score,
-                    numComments: postData.num_comments
-                },
-                totalComments: comments.length,
-                comments
-            }, null, 2);
-
-        } catch (error: any) {
-            console.error('Reddit comments error:', error.response?.data || error.message);
-            return JSON.stringify({
-                error: 'Failed to fetch Reddit comments',
-                message: error.message,
-                postId
-            });
-        }
-    },
-    {
-        name: "getRedditComments",
-        description: "Fetch comments and discussion from a specific Reddit post. Useful for analyzing community sentiment and detailed reactions to claims.",
-        schema: z.object({
-            postId: z.string().describe("Reddit post ID (e.g., '15zkd6o')"),
-            sort: z.enum(['confidence', 'top', 'new', 'controversial', 'old', 'qa']).optional().default('top'),
-            limit: z.number().optional().default(50).describe("Max comments to return")
-        })
-    }
-);
-
 
 const searchFarcaster = tool(
     async ({ query, limit = 25, priority = 'relevance' }: {
@@ -504,8 +377,7 @@ const analyzeSocialSentiment = tool(
 );
 
 const tools = [
-    searchReddit,
-    getRedditComments,
+    scrapeReddit,
     searchFarcaster,
     getFarcasterUserInfo,
     scrapeTwitter,
@@ -588,26 +460,26 @@ async function analyzeSocialEvidence(state: typeof SocialEvidenceState.State) {
                 Your mission: Gather and analyze social media discussions around claims to understand public sentiment, identify key debates, and detect coordinated narratives.
 
                 You have access to these tools:
-                1. searchReddit: Search Reddit for posts and discussions
-                2. getRedditComments: Get detailed comments from specific Reddit posts
-                3. searchFarcaster: Search Farcaster (decentralized social) for relevant casts
-                4. getFarcasterUserInfo: Get credibility info about Farcaster users
-                5. scrapeTwitter: Scrape Twitter for tweets (requires setup)
-                6. analyzeSocialSentiment: Analyze sentiment across collected posts
+                1. scrapeReddit: Scrape Reddit for posts (using web scraping - no API)
+                2. searchFarcaster: Search Farcaster (decentralized social) for relevant casts
+                3. getFarcasterUserInfo: Get credibility info about Farcaster users
+                4. scrapeTwitter: Scrape Twitter for tweets (requires setup)
+                5. analyzeSocialSentiment: Analyze sentiment across collected posts
 
                 Analysis workflow:
-                1. Search Reddit for discussions (try relevant subreddits first)
-                2. Search Farcaster for related casts
+                1. Try scraping Reddit for discussions (note: scraping has limitations)
+                2. Search Farcaster for related casts (this uses proper API)
                 3. If Twitter scraper is available, search Twitter
-                4. For high-engagement posts, fetch comments/replies for deeper analysis
-                5. Use sentiment analysis on collected posts
-                6. Identify: consensus vs. debate, coordinated messaging, expert voices
+                4. Use sentiment analysis on collected posts
+                5. Identify: consensus vs. debate, coordinated messaging, expert voices
 
                 Focus on:
                 - Quality over quantity (high-engagement, credible users)
                 - Distinguishing genuine discussion from manipulation
                 - Identifying expert/authoritative voices
-                - Detecting coordinated campaigns or bot behavior`;
+                - Detecting coordinated campaigns or bot behavior
+
+                IMPORTANT: Reddit scraping is limited - prioritize Farcaster which uses a proper API.`;
 
     return {
         messages: await llmWithTools.invoke([

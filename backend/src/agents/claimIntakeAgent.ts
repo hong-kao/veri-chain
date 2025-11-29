@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';;
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-pro-latest",
+const llm = new ChatOpenAI({
+    apiKey: env.OPENAI_API_KEY || '',
+    model: "gpt-4o-mini",
     temperature: 0.1,
 });
 

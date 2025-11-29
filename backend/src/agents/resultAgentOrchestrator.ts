@@ -12,23 +12,18 @@ import { mediaForensicsAgent } from './mediaForensicsAgent.js';
 import { propagationPatternAgent } from './patternAgent.js';
 import { aggregateAndScore } from './scoringAgent.js';
 import { routeToVoting } from './communityRoutingAgent.js';
+import ClaimRegistryABI from '../abis/ClaimRegistry.json' with { type: "json" };
+import VerificationMarketABI from '../abis/VerificationMarket.json' with { type: "json" };
+import ReputationABI from '../abis/Reputation.json' with { type: "json" };
+import VerifierBadgeABI from '../abis/VerifierBadge.json' with { type: "json" };
 
 const prisma = new PrismaClient();
 
-// Smart Contract ABIs (simplified - add full ABIs)
-const CLAIM_REGISTRY_ABI = [
-  "function registerClaim(uint256 claimId, bytes32 claimHash, address submitter) external returns (bool)",
-  "function resolveClaim(uint256 claimId, bytes32 claimHash, uint8 verdict, uint256 confidence) external returns (bool)",
-  "event ClaimRegistered(uint256 indexed claimId, bytes32 claimHash, address submitter)",
-  "event ClaimResolved(uint256 indexed claimId, bytes32 claimHash, uint8 verdict, uint256 confidence)"
-];
-
-const STAKING_VOTING_ABI = [
-  "function settleClaim(uint256 claimId, uint8 finalVerdict) external returns (bool)",
-  "function distributeRewards(uint256 claimId) external returns (bool)",
-  "event VoteCast(uint256 indexed claimId, address voter, uint8 choice, uint256 stakedAmount)",
-  "event RewardsDistributed(uint256 indexed claimId, address[] winners, uint256[] amounts)"
-];
+// Deployed Addresses (Sepolia)
+const CLAIM_REGISTRY_ADDRESS = "0xB9363715c69992Fada1448C05165b97d23D83559";
+const VERIFICATION_MARKET_ADDRESS = "0x2CF4e9F01fEe292Dfbf2449A9027F64c38254ecF";
+const REPUTATION_ADDRESS = "0x81dD1cb41329cDfc58932d36AD21CDD8e894f348";
+const VERIFIER_BADGE_ADDRESS = "0xe24458A4Cd02B4A228B5ea6032A7055c3c096f8b";
 
 interface ClaimInput {
   submitterId: number;
@@ -64,24 +59,38 @@ export class ResultOrchestrator {
   private provider: ethers.Provider;
   private signer: ethers.Signer;
   private claimRegistryContract: ethers.Contract;
-  private stakingVotingContract: ethers.Contract;
+  private verificationMarketContract: ethers.Contract;
+  private reputationContract: ethers.Contract;
+  private verifierBadgeContract: ethers.Contract;
 
   constructor(
     rpcUrl: string,
-    privateKey: string,
-    claimRegistryAddress: string,
-    stakingVotingAddress: string
+    privateKey: string
   ) {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.signer = new ethers.Wallet(privateKey, this.provider);
+
     this.claimRegistryContract = new ethers.Contract(
-      claimRegistryAddress,
-      CLAIM_REGISTRY_ABI,
+      CLAIM_REGISTRY_ADDRESS,
+      ClaimRegistryABI.abi,
       this.signer
     );
-    this.stakingVotingContract = new ethers.Contract(
-      stakingVotingAddress,
-      STAKING_VOTING_ABI,
+
+    this.verificationMarketContract = new ethers.Contract(
+      VERIFICATION_MARKET_ADDRESS,
+      VerificationMarketABI.abi,
+      this.signer
+    );
+
+    this.reputationContract = new ethers.Contract(
+      REPUTATION_ADDRESS,
+      ReputationABI.abi,
+      this.signer
+    );
+
+    this.verifierBadgeContract = new ethers.Contract(
+      VERIFIER_BADGE_ADDRESS,
+      VerifierBadgeABI.abi,
       this.signer
     );
   }
@@ -863,13 +872,12 @@ export class ResultOrchestrator {
       });
 
       if (votingSession) {
-        const settleTx = await this.stakingVotingContract.settleClaim(
-          claimId,
-          verdictEnum
+        const settleTx = await this.verificationMarketContract.settleClaim(
+          claimId
         );
 
         const settleReceipt = await settleTx.wait();
-        console.log(`  💰 Rewards distributed: TX=${settleReceipt.hash}`);
+        console.log(`  💰 Claim settled (rewards ready): TX=${settleReceipt.hash}`);
 
         // Log on-chain event
         await prisma.onchainEvent.create({

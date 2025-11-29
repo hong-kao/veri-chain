@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
@@ -8,10 +8,11 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import axios from 'axios';
 import { scrapeWebsite } from '../utils/scraper.js';
 
-//Choice of LLM
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-pro-latest"
+//Choice of LLM - using OpenAI for reliability and low cost
+const llm = new ChatOpenAI({
+    apiKey: env.OPENAI_API_KEY || '',
+    model: "gpt-4o-mini",  // Cheapest OpenAI model, very efficient
+    temperature: 0.3
 });
 
 const serpApiSearch = tool(
@@ -479,97 +480,78 @@ function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_cal
 
 //nodes
 async function analyzeLogic(state: typeof LogicConsistencyState.State) {
-    const systemPrompt = `You are the Logic & Consistency Agent for VeriChain, a misinformation detection system.
+    // DIRECTLY CALL TOOLS instead of asking LLM to call them
+    const toolResults: ToolMessage[] = [];
 
-                        Your mission: Analyze claims for logical consistency, temporal coherence, and internal contradictions.
+    // 1. Check for logical fallacies
+    const fallacyResult = await detectLogicalFallacies.invoke({
+        claim: state.claim,
+        claimType: 'general'
+    });
+    console.log('✓ Checked logical fallacies');
 
-                        You have access to these tools:
-                        1. checkTemporalConsistency: Analyze dates/times for timeline conflicts
-                        2. detectLogicalFallacies: Scan for common logical fallacies
-                        3. checkInternalContradictions: Find conflicting statements within the claim
-                        4. serpApiSearch: Search Google when you need external context to verify facts or dates
-                        5. webScraper: Scrape full article content from URLs (use AFTER serpApiSearch)
+    // 2. Check for contradictions
+    const statements = state.claim.split(/[.!?]/).filter(s => s.trim().length > 0);
+    const contradictionResult = await checkInternalContradictions.invoke({
+        claim: state.claim,
+        statements
+    });
+    console.log('✓ Checked contradictions');
 
-                        Analysis workflow:
-                        1. First, use the logic analysis tools (temporal, fallacies, contradictions)
-                        2. If you find dates or facts that need verification, use serpApiSearch
-                        3. If search results look promising, use webScraper to get full article content
-                        4. Synthesize all findings into a final verdict
+    // 3. Check temporal consistency
+    const dateMatches = state.claim.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi) || [];
+    const temporalResult = await checkTemporalConsistency.invoke({
+        claim: state.claim,
+        dates: dateMatches,
+        needsVerification: dateMatches.length > 0
+    });
+    console.log('✓ Checked temporal consistency');
 
-                        Be thorough but efficient. Don't over-search - only use web tools when truly needed.
-                        Focus on finding REAL logical issues, not being pedantic.`;
+    // 4. SEARCH USING SERPAPI (THE KEY MISSING TOOL!)
+    const searchQuery = state.claim.substring(0, 100); // First 100 chars as query
+    const searchResult = await serpApiSearch.invoke({
+        query: searchQuery,
+        count: 5
+    });
+    console.log('✓ Searched with SerpAPI');
 
+    // Return as human message to continue flow
     return {
-        messages: await llmWithTools.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(`Analyze this claim for logical consistency:\n\n"${state.claim}"\n\nUse your tools strategically. Start with logic checks, then use web search only if you need external verification.`)
-        ])
+        messages: [
+            new HumanMessage(`Tool Results:
+            
+Fallacies: ${fallacyResult}
+
+Contradictions: ${contradictionResult}
+
+Temporal: ${temporalResult}
+
+Search: ${searchResult}
+
+Now provide your final verdict.`)
+        ]
     };
 }
 
 async function processToolResults(state: typeof LogicConsistencyState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage || !hasToolCalls(lastMessage)) {
-        return { messages: [] };
-    }
-
-    const result: ToolMessage[] = [];
-    const searchResults: any[] = [];
-    const scrapedContent: any[] = [];
-
-    for (const toolCall of lastMessage.tool_calls) {
-        const tool = toolsByName[toolCall.name];
-        const observation = await (tool as any).invoke(toolCall);  //A QUICK FIX -> as any for tool -> Sit and fix later!
-        result.push(observation);
-
-        // Track search and scrape results
-        try {
-            const parsed = JSON.parse(observation.content as string);
-            if (toolCall.name === 'serpApiSearch' && parsed.results) {
-                searchResults.push(...parsed.results);
-            } else if (toolCall.name === 'webScraper' && parsed.data) {
-                scrapedContent.push(parsed.data);
-            }
-        } catch (e) {
-            // Ignore parsing errors for tracking
-        }
-    }
-
-    return {
-        messages: result,
-        externalContext: {
-            searchResults,
-            scrapedContent
-        }
-    };
+    // Not needed anymore since we call tools directly
+    return { messages: [] };
 }
 
 async function extractVerdict(state: typeof LogicConsistencyState.State) {
-    const verdictPrompt = `Based on all your analysis and tool results, provide a final verdict.
+    const verdictPrompt = `Based on the tool results above, provide ONLY this JSON (no other text):
 
-                        Return ONLY valid JSON in this EXACT format:
-                        {
-                        "logicScore": 0.75,
-                        "isConsistent": true,
-                        "confidence": 0.85,
-                        "flaggedIssues": ["issue1", "issue2"],
-                        "temporalConsistency": {
-                            "consistent": true,
-                            "issues": []
-                        },
-                        "logicalFallacies": ["fallacy1"],
-                        "contradictions": ["contradiction1"],
-                        "explanation": "Brief summary of why this claim is/isn't logically consistent",
-                        "needsExternalVerification": false
-                        }
-
-                        Scoring guide:
-                        - logicScore: 0-1 (0=completely illogical, 1=perfectly logical)
-                        - confidence: 0-1 (how confident you are in this assessment)
-                        - isConsistent: true/false (overall verdict)
-
-                        Be precise. No preamble, just JSON.`;
+{
+  "logicScore": 0.75,
+  "isConsistent": true,
+  "confidence": 0.85,
+  "flaggedIssues": ["list issues"],
+  "temporalConsistency": {"consistent": true, "issues": []},
+  "logicalFallacies": [],
+  "contradictions": [],
+  "explanation": "brief explanation",
+  "needsExternalVerification": false
+}`;
 
     const verdictMessage = await llm.invoke([
         ...state.messages,
@@ -606,29 +588,14 @@ async function extractVerdict(state: typeof LogicConsistencyState.State) {
             flaggedIssues: ["Failed to parse verdict"],
             explanation: "Error processing analysis results"
         };
-    }
+    };
 }
 
 async function shouldContinue(state: typeof LogicConsistencyState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage) return END;
-
-    if (hasToolCalls(lastMessage)) {
-        return "processToolResults";
-    }
-
-    //check if we've processed tools and need verdict
-    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
-    if (hasToolResults && !state.explanation) {
+    // Since we call tools directly in analyzeLogic, just go straight to verdict
+    if (!state.explanation) {
         return "extractVerdict";
     }
-
-    //if no tools were called at all, extract verdict
-    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
-        return "extractVerdict";
-    }
-
     return END;
 }
 
@@ -682,6 +649,8 @@ async function testLogicConsistencyAgent() {
         const result = await logicConsistencyAgent.invoke({
             claim: testCase.claim,
             messages: []
+        }, {
+            recursionLimit: 50
         });
 
         console.log("📊 Analysis Results:");

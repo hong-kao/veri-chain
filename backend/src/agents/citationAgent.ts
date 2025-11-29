@@ -1,15 +1,15 @@
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';;
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
 import { StateGraph, START, END } from "@langchain/langgraph";
 import axios from 'axios';
 
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-pro-latest"
+const llm = new ChatOpenAI({
+    apiKey: env.OPENAI_API_KEY || '',
+    model: "gpt-4o-mini"
 });
 
 const serpApiSearch = tool(
@@ -365,49 +365,46 @@ function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_cal
 }
 
 async function searchEvidence(state: typeof CitationEvidenceState.State) {
-    const systemPrompt = `You are the Citation & Evidence Agent for VeriChain.
+    // DIRECTLY CALL TOOLS - don't rely on LLM to call them
 
-                Your mission: Find credible external sources that either support or contradict the claim.
+    // 1. Search fact-check sites first
+    console.log('✓ Searching fact-check sites...');
+    const factCheckResult = await searchFactCheckSites.invoke({
+        claim: state.claim
+    });
 
-                Analysis workflow:
-                1. FIRST: Use searchFactCheckSites to check if professional fact-checkers have already verified this claim
-                2. Use serpApiSearch with multiple targeted queries:
-                - Search for the exact claim
-                - Search for key entities/events mentioned
-                - Search for contrary positions (add "debunked" or "false" to query)
-                - Search for supporting evidence
-                3. Use webScraper on the most promising URLs (fact-checks first, then news, then academic)
-                4. Use analyzeSourceQuality on scraped content to assess credibility
-                5. Use extractCitedSources to map the evidence chain
+    // 2. Do a general search
+    console.log('✓ Searching Google...');
+    const searchResult = await serpApiSearch.invoke({
+        query: state.claim.substring(0, 100),
+        count: 10
+    });
 
-                Be thorough: Aim to find 3-5 high-quality sources on each side (supporting and contradicting).
-                Prioritize: Fact-checks > News outlets > Academic sources > Blogs
-                Be balanced: Actively search for BOTH supporting and contradicting evidence.`;
+    // 3. Search for debunking evidence
+    console.log('✓ Searching for contradicting evidence...');
+    const debunkResult = await serpApiSearch.invoke({
+        query: `${state.claim.substring(0, 80)} debunked false`,
+        count: 5
+    });
 
     return {
-        messages: await llmWithTools.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(`Find and analyze evidence for this claim:\n\n"${state.claim}"\n\nSearch thoroughly. Look for fact-checks first, then news coverage, then academic sources. Get both supporting and contradicting evidence.`)
-        ])
+        messages: [
+            new HumanMessage(`Evidence gathered:
+
+Fact-Check Sites: ${factCheckResult}
+
+General Search: ${searchResult}
+
+Debunking Search: ${debunkResult}
+
+Now synthesize these findings.`)
+        ]
     };
 }
 
 async function processToolResults(state: typeof CitationEvidenceState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage || !hasToolCalls(lastMessage)) {
-        return { messages: [] };
-    }
-
-    const result: ToolMessage[] = [];
-
-    for (const toolCall of lastMessage.tool_calls) {
-        const tool = toolsByName[toolCall.name];
-        const observation = await (tool as any).invoke(toolCall);
-        result.push(observation);
-    }
-
-    return { messages: result };
+    // Not needed since we call tools directly
+    return { messages: [] };
 }
 
 async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
@@ -510,23 +507,10 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
 }
 
 async function shouldContinue(state: typeof CitationEvidenceState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage) return END;
-
-    if (hasToolCalls(lastMessage)) {
-        return "processToolResults";
-    }
-
-    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
-    if (hasToolResults && !state.explanation) {
+    // Since we call tools directly, just go to synthesis
+    if (!state.explanation) {
         return "synthesizeEvidence";
     }
-
-    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
-        return "synthesizeEvidence";
-    }
-
     return END;
 }
 

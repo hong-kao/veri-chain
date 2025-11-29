@@ -1,7 +1,7 @@
 // mediaForensicsAgent.ts
 import { tool } from '@langchain/core/tools';
 import { z } from "zod";
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';;
 import { env } from '../config/env.config.js';
 import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
 import { HumanMessage, SystemMessage, ToolMessage, ToolCall, type BaseMessage } from '@langchain/core/messages';
@@ -11,9 +11,9 @@ import FormData from 'form-data';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 
-const llm = new ChatGoogleGenerativeAI({
-    apiKey: env.GEMINI_API_KEY || '',
-    model: "gemini-pro-latest",
+const llm = new ChatOpenAI({
+    apiKey: env.OPENAI_API_KEY || '',
+    model: "gpt-4o-mini",
     temperature: 0.2
 });
 
