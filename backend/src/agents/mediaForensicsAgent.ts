@@ -227,24 +227,28 @@ const sightengineDetectAIImage = tool(
                 throw new Error('Either imageUrl or imageFile must be provided');
             }
 
-            const endpoint = imageFile
-                ? 'https://api.sightengine.com/1.0/check.json'
-                : 'https://api.sightengine.com/1.0/check.json';
+            const endpoint = 'https://api.sightengine.com/1.0/check.json';
 
             const response = await axios.post(endpoint, formData, {
-                headers: formData.getHeaders()
+                headers: formData.getHeaders(),
+                timeout: 30000
             });
 
             const result = response.data;
 
+            // Parse Sightengine genai response
+            // Response format: { type: { ai_generated: 0.99 } }
+            const aiScore = result.type?.ai_generated || 0;
+            const isAIGenerated = aiScore > 0.5;
+
             return JSON.stringify({
                 source: imageUrl || imageFile,
-                aiGenerated: {
-                    isAIGenerated: result.type?.ai_generated === 'ai' || false,
-                    confidence: result.type?.ai_generated_prob || 0,
-                    detectionType: result.type?.ai_generated || 'unknown',
-                    rawScores: result.type
-                },
+                isAIGenerated,
+                confidence: aiScore,
+                score: aiScore,
+                interpretation: aiScore > 0.7 ? 'Likely AI-generated' :
+                    aiScore > 0.3 ? 'Uncertain' :
+                        'Likely authentic',
                 rawResponse: result
             }, null, 2);
 
@@ -252,13 +256,14 @@ const sightengineDetectAIImage = tool(
             console.error('Sightengine AI Image Detection error:', error.response?.data || error.message);
             return JSON.stringify({
                 error: 'Sightengine AI image detection failed',
-                message: error.response?.data?.message || error.message
+                message: error.response?.data?.message || error.message,
+                source: imageUrl || imageFile
             });
         }
     },
     {
         name: "sightengineDetectAIImage",
-        description: "Detect if an image is AI-generated using Sightengine. Secondary option to Hive with different detection models.",
+        description: "Detect if an image is AI-generated using Sightengine genai model. Returns score 0-1 where >0.7 = likely AI, 0.3-0.7 = uncertain, <0.3 = likely real.",
         schema: z.object({
             imageUrl: z.string().optional().describe("URL of the image to analyze"),
             imageFile: z.string().optional().describe("Local file path of the image")
@@ -486,9 +491,6 @@ const reverseImageSearch = tool(
 // );
 
 const tools = [
-    hiveDetectAIImage,
-    hiveDetectDeepfakeVideo,
-    hiveDetectAIAudio,
     sightengineDetectAIImage,
     sightengineDetectAIVideo,
     sightengineDetectAIAudio,
@@ -578,49 +580,114 @@ function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_cal
 
 
 async function analyzeMediaForensics(state: typeof MediaForensicsState.State) {
-    const systemPrompt = `You are the Media Forensics Agent for VeriChain, a misinformation detection system.
+    // DIRECTLY CALL TOOLS - Using Sightengine only
 
-Your mission: Analyze images, videos, and audio for AI generation, deepfakes, and manipulation.
+    const imageAnalysis: any[] = [];
+    const videoAnalysis: any[] = [];
+    const audioAnalysis: any[] = [];
 
-You have access to these tools:
+    // If no media URLs, return early
+    if (state.mediaUrls.length === 0) {
+        return {
+            messages: [
+                new HumanMessage("No media URLs provided for analysis.")
+            ]
+        };
+    }
 
-PRIMARY (Hive AI - use first):
-1. hiveDetectAIImage: Detect AI-generated images
-2. hiveDetectDeepfakeVideo: Detect deepfake and AI-generated videos
-3. hiveDetectAIAudio: Detect AI-generated audio and voice cloning
+    // Analyze each media file
+    for (const media of state.mediaUrls.slice(0, 2)) { // Limit to 2 for cost
+        console.log(`✓ Analyzing ${media.type}: ${media.url.substring(0, 60)}...`);
 
-SECONDARY (Sightengine - use if Hive fails or for confirmation):
-4. sightengineDetectAIImage: Alternative AI image detection
-5. sightengineDetectAIVideo: Alternative AI video detection
-6. sightengineDetectAIAudio: Alternative AI audio detection
+        if (media.type === 'image') {
+            // Sightengine AI Image Detection (genai model)
+            try {
+                console.log('  → Running Sightengine AI detection...');
+                const aiResultRaw = await sightengineDetectAIImage.invoke({
+                    imageUrl: media.url
+                });
 
-ADDITIONAL:
-7. reverseImageSearch: Find if images are reused or misattributed
+                const aiResult = JSON.parse(aiResultRaw);
+                console.log(`  → AI Detection Score: ${aiResult.score || 0}`);
 
-Analysis workflow:
-1. For each media URL, identify its type (image/video/audio)
-2. Run PRIMARY detection (Hive) first
-3. If Hive fails or confidence is medium (0.4-0.7), run SECONDARY (Sightengine) for confirmation
-4. For images, also run reverse image search to detect reuse
-5. Aggregate results and identify manipulation patterns
+                imageAnalysis.push({
+                    url: media.url,
+                    isAIGenerated: aiResult.isAIGenerated || false,
+                    confidence: aiResult.confidence || aiResult.score || 0,
+                    provider: 'Sightengine',
+                    interpretation: aiResult.interpretation || 'Unknown'
+                });
+            } catch (error: any) {
+                console.log(`  ✗ Sightengine AI detection failed: ${error.message}`);
+                imageAnalysis.push({
+                    url: media.url,
+                    isAIGenerated: false,
+                    confidence: 0,
+                    provider: 'Sightengine',
+                    error: error.message
+                });
+            }
 
-Focus on:
-- High-confidence detections (>0.7 is strong evidence)
-- Cross-validation between multiple tools
-- Context from reverse image search
-- Identifying specific manipulation types (deepfake, AI generation, reuse)`;
+            // Try reverse image search
+            try {
+                console.log('  → Running reverse image search...');
+                const reverseResultRaw = await reverseImageSearch.invoke({
+                    imageUrl: media.url
+                });
 
-    const mediaInfo = state.mediaUrls.length > 0
-        ? `\n\nMedia to analyze:\n${state.mediaUrls.map((media, i) =>
-            `${i + 1}. [${media.type.toUpperCase()}] ${media.url}`
-        ).join('\n')}`
-        : "\n\nNo media URLs provided.";
+                const reverseResult = JSON.parse(reverseResultRaw);
+                if (imageAnalysis.length > 0) {
+                    imageAnalysis[imageAnalysis.length - 1].reverseSearchResults = reverseResult.matchingImages || [];
+                }
+            } catch (error: any) {
+                console.log(`  ✗ Reverse search failed: ${error.message}`);
+            }
+        } else if (media.type === 'video') {
+            // Video detection with Sightengine
+            try {
+                console.log('  → Running Sightengine video detection...');
+                const videoResultRaw = await sightengineDetectAIVideo.invoke({
+                    videoUrl: media.url
+                });
+
+                const videoResult = JSON.parse(videoResultRaw);
+                videoAnalysis.push({
+                    url: media.url,
+                    isAIGenerated: videoResult.aiGenerated?.isAIGenerated || false,
+                    confidence: videoResult.aiGenerated?.confidence || 0,
+                    provider: 'Sightengine'
+                });
+            } catch (error: any) {
+                console.log(`  ✗ Video detection failed: ${error.message}`);
+            }
+        } else if (media.type === 'audio') {
+            // Audio detection with Sightengine
+            try {
+                console.log('  → Running Sightengine audio detection...');
+                const audioResultRaw = await sightengineDetectAIAudio.invoke({
+                    audioUrl: media.url
+                });
+
+                const audioResult = JSON.parse(audioResultRaw);
+                audioAnalysis.push({
+                    url: media.url,
+                    isAIGenerated: audioResult.aiGenerated?.isAIGenerated || false,
+                    confidence: audioResult.aiGenerated?.confidence || 0,
+                    provider: 'Sightengine'
+                });
+            } catch (error: any) {
+                console.log(`  ✗ Audio detection failed: ${error.message}`);
+            }
+        }
+    }
 
     return {
-        messages: await llmWithTools.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(`Analyze media authenticity for this claim:\n\n"${state.claim}"${mediaInfo}\n\nUse Hive AI tools first (primary), then Sightengine if needed (secondary). For images, also perform reverse search to detect reuse.`)
-        ])
+        messages: [
+            new HumanMessage(`Media forensics analysis complete. Now synthesize the results.`)
+        ],
+        imageAnalysis,
+        videoAnalysis,
+        audioAnalysis
     };
 }
 
@@ -686,104 +753,84 @@ async function processToolResults(state: typeof MediaForensicsState.State) {
 }
 
 async function extractVerdict(state: typeof MediaForensicsState.State) {
-    const verdictPrompt = `Based on all media forensics analysis, provide a final media authenticity verdict.
+    // Calculate scores based on actual detection results
+    const allMedia = [
+        ...state.imageAnalysis,
+        ...state.videoAnalysis,
+        ...state.audioAnalysis
+    ];
 
-Return ONLY valid JSON in this EXACT format:
-{
-  "mediaAuthenticityScore": 0.65,
-  "hasManipulation": true,
-  "manipulationTypes": ["AI-generated image", "Deepfake video"],
-  "confidence": 0.85,
-  "imageAnalysis": [
-    {
-      "url": "https://example.com/image.jpg",
-      "isAIGenerated": true,
-      "confidence": 0.92,
-      "provider": "Hive",
-      "reverseSearchResults": null
-    }
-  ],
-  "videoAnalysis": [
-    {
-      "url": "https://example.com/video.mp4",
-      "isDeepfake": false,
-      "isAIGenerated": false,
-      "confidence": 0.15,
-      "provider": "Hive"
-    }
-  ],
-  "audioAnalysis": [],
-  "explanation": "Summary of media authenticity findings and detected manipulations"
-}
-
-Scoring guide:
-- mediaAuthenticityScore: 0-1 (0=heavily manipulated, 1=authentic)
-- hasManipulation: true if ANY media shows manipulation
-- confidence: 0-1 (how confident you are in the assessment)
-- manipulationTypes: list specific types detected
-
-Consider:
-- High confidence (>0.7) from tools is strong evidence
-- Cross-validation between Hive and Sightengine
-- Reverse image search results (reuse = potential misattribution)
-- Multiple detections increase confidence
-
-Be precise and objective.`;
-
-    const verdictMessage = await llm.invoke([
-        ...state.messages,
-        new HumanMessage(verdictPrompt)
-    ]);
-
-    try {
-        const content = typeof verdictMessage.content === 'string'
-            ? verdictMessage.content
-            : JSON.stringify(verdictMessage.content);
-
-        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
-        const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-
-        const verdict = JSON.parse(jsonStr);
-
-        return {
-            mediaAuthenticityScore: verdict.mediaAuthenticityScore ?? 0.5,
-            hasManipulation: verdict.hasManipulation ?? false,
-            manipulationTypes: verdict.manipulationTypes || [],
-            confidence: verdict.confidence ?? 0.5,
-            imageAnalysis: verdict.imageAnalysis || state.imageAnalysis || [],
-            videoAnalysis: verdict.videoAnalysis || state.videoAnalysis || [],
-            audioAnalysis: verdict.audioAnalysis || state.audioAnalysis || [],
-            explanation: verdict.explanation || "No explanation provided"
-        };
-    } catch (error) {
-        console.error("Failed to parse media forensics verdict:", error);
+    if (allMedia.length === 0) {
         return {
             mediaAuthenticityScore: 0.5,
             hasManipulation: false,
             confidence: 0.3,
-            explanation: "Error processing media forensics analysis"
+            explanation: "No media was analyzed"
         };
     }
+
+    // Calculate authenticity score (inverse of AI generation)
+    // High score = authentic, Low score = likely manipulated/AI
+    const avgAIConfidence = allMedia.reduce((sum, item) =>
+        sum + (item.isAIGenerated ? item.confidence : 0), 0) / allMedia.length;
+
+    const authenticityScore = 1 - avgAIConfidence;
+
+    // Determine if manipulation detected
+    const hasManipulation = allMedia.some(item => item.isAIGenerated && item.confidence > 0.5);
+
+    // Calculate overall confidence (average of all detection confidences)
+    const overallConfidence = allMedia.reduce((sum, item) =>
+        sum + item.confidence, 0) / allMedia.length;
+
+    // Identify manipulation types
+    const manipulationTypes: string[] = [];
+    if (state.imageAnalysis.some(img => img.isAIGenerated && img.confidence > 0.7)) {
+        manipulationTypes.push("AI-generated image");
+    }
+    if (state.videoAnalysis.some(vid => vid.isAIGenerated && vid.confidence > 0.7)) {
+        manipulationTypes.push("AI-generated video");
+    }
+    if (state.videoAnalysis.some(vid => (vid as any).isDeepfake && (vid as any).confidence > 0.7)) {
+        manipulationTypes.push("Deepfake video");
+    }
+    if (state.audioAnalysis.some(aud => aud.isAIGenerated && aud.confidence > 0.7)) {
+        manipulationTypes.push("AI-generated audio");
+    }
+
+    // Generate explanation
+    const aiItems = allMedia.filter(item => item.isAIGenerated);
+    const realItems = allMedia.filter(item => !item.isAIGenerated);
+
+    let explanation = "";
+    if (hasManipulation) {
+        explanation = `Analysis detected ${aiItems.length} AI-generated/manipulated media out of ${allMedia.length} total. `;
+        if (manipulationTypes.length > 0) {
+            explanation += `Manipulation types: ${manipulationTypes.join(", ")}. `;
+        }
+        explanation += `Average AI confidence: ${(avgAIConfidence * 100).toFixed(0)}%.`;
+    } else {
+        explanation = `All ${allMedia.length} media items appear to be authentic with low AI-generation scores. `;
+        explanation += `Average authenticity confidence: ${(authenticityScore * 100).toFixed(0)}%.`;
+    }
+
+    return {
+        mediaAuthenticityScore: authenticityScore,
+        hasManipulation,
+        manipulationTypes,
+        confidence: overallConfidence,
+        imageAnalysis: state.imageAnalysis,
+        videoAnalysis: state.videoAnalysis,
+        audioAnalysis: state.audioAnalysis,
+        explanation
+    };
 }
 
 async function shouldContinue(state: typeof MediaForensicsState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage) return END;
-
-    if (hasToolCalls(lastMessage)) {
-        return "processToolResults";
-    }
-
-    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
-    if (hasToolResults && !state.explanation) {
+    // Since we call tools directly, just go straight to verdict
+    if (!state.explanation) {
         return "extractVerdict";
     }
-
-    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
-        return "extractVerdict";
-    }
-
     return END;
 }
 
@@ -806,42 +853,22 @@ export { mediaForensicsAgent, MediaForensicsState };
 
 //TESTING!!
 async function testMediaForensicsAgent() {
-    console.log("🔍 Testing Media Forensics Agent (MCP)\n");
+    console.log("🔍 Testing Media Forensics Agent\n");
+
     const testCases = [
         {
-            name: "AI-Generated Image Claim",
-            claim: "This satellite image shows a new military base in disputed territory",
+            name: "AI-Generated Image 1 (Landscape)",
+            claim: "This is a real photograph from a news event",
             mediaUrls: [
-                { url: "https://example.com/satellite-image.jpg", type: "image" as const }
+                { url: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4", type: "image" as const }
             ]
         },
         {
-            name: "Deepfake Video Claim",
-            claim: "Video shows politician making controversial statement",
+            name: "AI-Generated Image 2 (Portrait)",
+            claim: "This is an authentic photograph of a person",
             mediaUrls: [
-                { url: "https://example.com/politician-speech.mp4", type: "video" as const }
+                { url: "https://thispersondoesnotexist.com", type: "image" as const }
             ]
-        },
-        {
-            name: "Voice Clone Audio",
-            claim: "Audio recording of CEO announcing company bankruptcy",
-            mediaUrls: [
-                { url: "https://example.com/ceo-announcement.mp3", type: "audio" as const }
-            ]
-        },
-        {
-            name: "Mixed Media Claim",
-            claim: "Breaking: Natural disaster footage and survivor testimonies",
-            mediaUrls: [
-                { url: "https://example.com/disaster-photo1.jpg", type: "image" as const },
-                { url: "https://example.com/disaster-photo2.jpg", type: "image" as const },
-                { url: "https://example.com/survivor-interview.mp4", type: "video" as const }
-            ]
-        },
-        {
-            name: "No Media Provided",
-            claim: "Scientists discover new element with revolutionary properties",
-            mediaUrls: []
         }
     ];
 

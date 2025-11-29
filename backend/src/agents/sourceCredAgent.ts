@@ -748,79 +748,54 @@ function extractDomain(url: string): string {
 }
 
 async function analyzeSourceCredibility(state: typeof SourceCredibilityState.State) {
-    const systemPrompt = `You are the Source Credibility Agent for VeriChain, a misinformation detection system.
+    // DIRECTLY CALL TOOLS - don't rely on LLM
 
-            Your mission: Assess the credibility and reliability of sources making claims.
+    const results = [];
 
-            You have access to these tools:
-            1. analyzeDomainReputation: Check domain trustworthiness against known credible/unreliable sources
-            2. serpApiSearch: Search for information about sources, authors, or fact-checks
-            3. webScraper: Scrape full content from URLs to analyze quality and author credentials
-            4. checkAuthorCredibility: Analyze author credibility based on name, credentials, and content
-            5. checkFactCheckingStatus: Check if the claim has been fact-checked
-            6. analyzePublicationQuality: Assess publication quality based on editorial standards
+    // 1. Analyze domain reputation for each URL
+    for (const url of state.urls.slice(0, 3)) { // Limit to 3 URLs to save costs
+        const domain = extractDomain(url);
+        console.log(`✓ Analyzing domain: ${domain}`);
+        const domainResult = await analyzeDomainReputation.invoke({
+            domain,
+            urls: [url]
+        });
+        results.push(`Domain ${domain}: ${domainResult}`);
+    }
 
-            Analysis workflow:
-            1. Start by analyzing domain reputation for all provided URLs
-            2. If URLs are provided, scrape 1-2 key sources to get full content
-            3. Check author credibility from scraped content
-            4. Analyze publication quality metrics
-            5. Search for fact-checks if needed
-            6. If you need more context about a source, use serpApiSearch
+    // 2. Check fact-checking status
+    console.log('✓ Checking fact-check status...');
+    const factCheckResult = await checkFactCheckingStatus.invoke({
+        claim: state.claim,
+        sources: state.urls
+    });
+    results.push(`Fact-Check Status: ${factCheckResult}`);
 
-            Be thorough but efficient. Prioritize analyzing primary sources over searching.
-            Focus on objective indicators of credibility.`;
-
-    const urlsInfo = state.urls.length > 0
-        ? `\n\nURLs to analyze:\n${state.urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
-        : "\n\nNo URLs provided - you may need to search for sources.";
+    // 3. Search for source reputation
+    if (state.urls.length > 0) {
+        const domain = extractDomain(state.urls[0]);
+        console.log(`✓ Searching for domain reputation: ${domain}`);
+        const searchResult = await serpApiSearch.invoke({
+            query: `${domain} reliability fact check`,
+            count: 3
+        });
+        results.push(`Reputation Search: ${searchResult}`);
+    }
 
     return {
-        messages: await llmWithTools.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(`Analyze source credibility for this claim:\n\n"${state.claim}"${urlsInfo}\n\nUse your tools to assess these sources. Start with domain reputation, then scrape promising sources for deeper analysis.`)
-        ])
+        messages: [
+            new HumanMessage(`Source credibility analysis complete:
+
+${results.join('\n\n')}
+
+Now synthesize the credibility assessment.`)
+        ]
     };
 }
 
 async function processToolResults(state: typeof SourceCredibilityState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage || !hasToolCalls(lastMessage)) {
-        return { messages: [] };
-    }
-
-    const result: ToolMessage[] = [];
-    const searchResults: any[] = [];
-    const scrapedContent: any[] = [];
-
-    for (const toolCall of lastMessage.tool_calls) {
-        const tool = toolsByName[toolCall.name];
-        const observation = await (tool as any).invoke(toolCall);
-        result.push(observation);
-
-        // Track results
-        try {
-            const parsed = JSON.parse(observation.content as string);
-            if (toolCall.name === 'serpApiSearch' && parsed.results) {
-                searchResults.push(...parsed.results);
-            } else if (toolCall.name === 'webScraper' && parsed.data) {
-                scrapedContent.push({
-                    url: parsed.url,
-                    content: parsed.data.content,
-                    metadata: parsed.data
-                });
-            }
-        } catch (e) {
-            // Ignore parsing errors
-        }
-    }
-
-    return {
-        messages: result,
-        searchResults,
-        scrapedContent
-    };
+    // Not needed since we call tools directly
+    return { messages: [] };
 }
 
 async function extractVerdict(state: typeof SourceCredibilityState.State) {
@@ -907,23 +882,10 @@ Be precise and objective. No preamble, just JSON.`;
 }
 
 async function shouldContinue(state: typeof SourceCredibilityState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage) return END;
-
-    if (hasToolCalls(lastMessage)) {
-        return "processToolResults";
-    }
-
-    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
-    if (hasToolResults && !state.explanation) {
+    // Since we call tools directly, just go to verdict
+    if (!state.explanation) {
         return "extractVerdict";
     }
-
-    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
-        return "extractVerdict";
-    }
-
     return END;
 }
 

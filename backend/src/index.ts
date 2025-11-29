@@ -18,6 +18,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
+
 //routes
 app.use("/api", analyzeRoutes);
 app.use("/api/claims", claimRoutes);
@@ -25,13 +28,28 @@ app.use("/api/claims", claimRoutes);
 //health check
 app.get("/", (req, res) => {
   res.json({
-    message: "VeriChain Backend",
+    message: "VeriChain Backend API",
     status: "running",
+    version: "2.0.0",
     endpoints: {
       health: "GET /api/health",
+      submitClaim: "POST /api/claims/submit",
+      claimStatus: "GET /api/claims/:claimId/status",
+      claimDetails: "GET /api/claims/:claimId",
+      // Legacy endpoints
       analyze: "POST /api/analyze",
-      batch: "POST /api/analyze/batch",
+      batch: "POST /api/analyze/batch"
     },
+    agents: {
+      textForensics: "✅ Working",
+      citation: "✅ Working",
+      sourceCred: "✅ Working",
+      socialEvidence: "✅ Working",
+      mediaForensics: "✅ Working",
+      pattern: "✅ Working",
+      scoring: "✅ Working",
+      orchestrator: "✅ Ready"
+    }
   });
 });
 

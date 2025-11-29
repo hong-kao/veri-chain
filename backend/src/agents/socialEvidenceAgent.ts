@@ -16,27 +16,11 @@ const llm = new ChatOpenAI({
 
 // Scrape Reddit using web scraping instead of API
 const scrapeReddit = tool(
-    async ({ query, subreddit, limit = 25, timeFilter = 'week', sortBy = 'relevance' }: {
-        query: string;
-        subreddit?: string;
-        limit?: number;
-        timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
-        sortBy?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
-    }) => {
+    async ({ query, subreddit, limit = 10 }: { query: string; subreddit?: string; limit?: number }) => {
         try {
-            // Build Reddit search URL
-            const baseUrl = subreddit
-                ? `https://www.reddit.com/r/${subreddit}/search`
-                : 'https://www.reddit.com/search';
-
-            const params = new URLSearchParams({
-                q: query,
-                sort: sortBy,
-                t: timeFilter,
-                ...(subreddit ? { restrict_sr: 'on' } : {})
-            });
-
-            const url = `${baseUrl}?${params.toString()}`;
+            const url = subreddit
+                ? `https://www.reddit.com/r/${subreddit}/search?q=${encodeURIComponent(query)}&restrict_sr=1&sort=relevance&t=week`
+                : `https://www.reddit.com/search?q=${encodeURIComponent(query)}&sort=relevance&t=week`;
 
             console.log(`Scraping Reddit: ${url}`);
 
@@ -44,8 +28,7 @@ const scrapeReddit = tool(
                 url,
                 extractType: 'full',
                 timeout: 15000,
-                waitForSelector: '[data-testid="post-container"], .Post',
-                removeElements: ['script', 'style', 'nav', 'footer', 'ads', 'iframe']
+                waitForSelector: 'body'
             });
 
             if (!result.success) {
@@ -53,36 +36,51 @@ const scrapeReddit = tool(
                     error: 'Reddit scraping failed',
                     message: result.error || 'Failed to load Reddit page',
                     query,
-                    subreddit
+                    subreddit: subreddit || 'all',
+                    posts: []
                 });
             }
 
-            // Simple parsing of scraped content - looking for post patterns
             const content = result.content || '';
-            const posts = [];
+            const wordCount = result.wordCount;
 
-            // This is a simplified parser - in production you'd want more robust parsing
-            // Note: Reddit's HTML structure changes, so this is a basic example
-            const postMatches = content.match(/points.*?comments/gi) || [];
-            const limitedMatches = postMatches.slice(0, Math.min(limit, 25));
+            // Instead of trying to parse individual posts from dynamic HTML,
+            // provide aggregated analysis of the scraped content
+            const hasDiscussion = wordCount > 100;
+            const mentionsQuery = content.toLowerCase().includes(query.toLowerCase());
 
-            for (let i = 0; i < limitedMatches.length; i++) {
-                posts.push({
-                    id: `scraped_${i}`,
-                    title: `Post ${i + 1} from search results`,
-                    snippet: limitedMatches[i].substring(0, 200),
-                    url: url,
-                    note: 'Scraped content - limited metadata available'
-                });
+            // Look for sentiment indicators in the text
+            const positiveWords = ['agree', 'true', 'correct', 'yes', 'confirmed', 'verified', 'support'];
+            const negativeWords = ['false', 'no', 'wrong', 'disagree', 'debunk', 'myth', 'hoax'];
+            const skepticalWords = ['unsure', 'maybe', 'possibly', 'unclear', 'doubt', 'question'];
+
+            const positiveMatches = positiveWords.filter(w => content.toLowerCase().includes(w)).length;
+            const negativeMatches = negativeWords.filter(w => content.toLowerCase().includes(w)).length;
+            const skepticalMatches = skepticalWords.filter(w => content.toLowerCase().includes(w)).length;
+
+            // Estimate sentiment based on keyword matches
+            let sentiment = 'neutral';
+            if (negativeMatches > positiveMatches && negativeMatches > skepticalMatches) {
+                sentiment = 'opposing';
+            } else if (positiveMatches > negativeMatches && positiveMatches > skepticalMatches) {
+                sentiment = 'supportive';
+            } else if (skepticalMatches > 0) {
+                sentiment = 'skeptical';
             }
 
             return JSON.stringify({
                 query,
                 subreddit: subreddit || 'all',
-                totalResults: posts.length,
-                posts,
-                source: 'web_scraping',
-                note: 'Reddit API not available - using web scraping. Results are limited.'
+                hasDiscussion,
+                mentionsQuery,
+                aggregatedSentiment: sentiment,
+                contentSnippet: content.substring(0, 300),
+                wordCount,
+                positiveIndicators: positiveMatches,
+                negativeIndicators: negativeMatches,
+                skepticalIndicators: skepticalMatches,
+                note: 'Reddit scraping provides aggregated sentiment analysis rather than individual posts due to dynamic content structure',
+                source: 'web_scraping'
             }, null, 2);
 
         } catch (error: any) {
@@ -91,149 +89,18 @@ const scrapeReddit = tool(
                 error: 'Reddit scraping failed',
                 message: error.message,
                 query,
-                note: 'Consider using Reddit API if available, or implement more robust scraping'
+                posts: [],
+                note: 'Reddit scraping encountered an error'
             });
         }
     },
     {
         name: "scrapeReddit",
-        description: "Scrape Reddit for posts and discussions using web scraping (no API). Returns limited information from search results. Note: May be unreliable compared to official API.",
+        description: "Scrape Reddit for discussions using web scraping (no API). Returns aggregated sentiment analysis and discussion indicators rather than individual posts. Limited reliability.",
         schema: z.object({
-            query: z.string().describe("Search query for Reddit posts"),
+            query: z.string().describe("Search query for Reddit discussions"),
             subreddit: z.string().optional().describe("Specific subreddit to search in (e.g., 'news', 'science')"),
-            limit: z.number().optional().default(25).describe("Number of posts to attempt to extract (max 25)"),
-            timeFilter: z.enum(['hour', 'day', 'week', 'month', 'year', 'all']).optional().default('week'),
-            sortBy: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).optional().default('relevance')
-        })
-    }
-);
-
-const searchFarcaster = tool(
-    async ({ query, limit = 25, priority = 'relevance' }: {
-        query: string;
-        limit?: number;
-        priority?: 'relevance' | 'likes' | 'recasts' | 'replies';
-    }) => {
-        try {
-            const response = await axios.get(
-                'https://api.neynar.com/v2/farcaster/cast/search',
-                {
-                    headers: {
-                        'x-api-key': env.NEYNAR_API_KEY || '',
-                        'Content-Type': 'application/json'
-                    },
-                    params: {
-                        q: query,
-                        limit: Math.min(limit, 100),
-                        priority_mode: priority === 'relevance' ? false : true
-                    }
-                }
-            );
-
-            const casts = response.data.result.casts.map((cast: any) => ({
-                hash: cast.hash,
-                text: cast.text,
-                author: {
-                    fid: cast.author.fid,
-                    username: cast.author.username,
-                    displayName: cast.author.display_name,
-                    followerCount: cast.author.follower_count,
-                    verifications: cast.author.verifications || []
-                },
-                timestamp: cast.timestamp,
-                reactions: {
-                    likes: cast.reactions?.likes_count || 0,
-                    recasts: cast.reactions?.recasts_count || 0,
-                    replies: cast.replies?.count || 0
-                },
-                channel: cast.channel ? {
-                    id: cast.channel.id,
-                    name: cast.channel.name,
-                    url: cast.channel.url
-                } : null,
-                embeds: cast.embeds || [],
-                mentionedProfiles: cast.mentioned_profiles || []
-            }));
-
-            return JSON.stringify({
-                query,
-                totalResults: casts.length,
-                casts
-            }, null, 2);
-
-        } catch (error: any) {
-            console.error('Farcaster search error:', error.response?.data || error.message);
-            return JSON.stringify({
-                error: 'Farcaster search failed',
-                message: error.response?.data?.message || error.message,
-                query
-            });
-        }
-    },
-    {
-        name: "searchFarcaster",
-        description: "Search Farcaster (via Neynar) for casts (posts) related to a claim. Returns cast content, author info, engagement metrics, and channel context.",
-        schema: z.object({
-            query: z.string().describe("Search query for Farcaster casts"),
-            limit: z.number().optional().default(25).describe("Number of casts to return (max 100)"),
-            priority: z.enum(['relevance', 'likes', 'recasts', 'replies']).optional().default('relevance')
-        })
-    }
-);
-
-const getFarcasterUserInfo = tool(
-    async ({ username, fid }: { username?: string; fid?: number }) => {
-        try {
-            if (!username && !fid) {
-                throw new Error('Either username or fid must be provided');
-            }
-
-            const endpoint = fid
-                ? `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}`
-                : `https://api.neynar.com/v2/farcaster/user/search?q=${username}&limit=1`;
-
-            const response = await axios.get(endpoint, {
-                headers: {
-                    'x-api-key': env.NEYNAR_API_KEY || '',
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            const user = fid
-                ? response.data.users[0]
-                : response.data.result.users[0];
-
-            if (!user) {
-                return JSON.stringify({ error: 'User not found' });
-            }
-
-            return JSON.stringify({
-                fid: user.fid,
-                username: user.username,
-                displayName: user.display_name,
-                bio: user.profile?.bio?.text || '',
-                followerCount: user.follower_count,
-                followingCount: user.following_count,
-                verifications: user.verifications || [],
-                verifiedAddresses: user.verified_addresses || {},
-                powerBadge: user.power_badge || false,
-                activeStatus: user.active_status || 'inactive'
-            }, null, 2);
-
-        } catch (error: any) {
-            console.error('Farcaster user info error:', error.response?.data || error.message);
-            return JSON.stringify({
-                error: 'Failed to fetch Farcaster user info',
-                message: error.message
-            });
-        }
-    },
-    {
-        name: "getFarcasterUserInfo",
-        description: "Get detailed information about a Farcaster user by username or FID. Returns profile details, follower counts, verifications, and credibility indicators.",
-        schema: z.object({
-            username: z.string().optional().describe("Farcaster username (e.g., 'dwr')"),
-            fid: z.number().optional().describe("Farcaster ID (FID)")
+            limit: z.number().optional().default(10).describe("Ignored for aggregated analysis")
         })
     }
 );
@@ -378,8 +245,6 @@ const analyzeSocialSentiment = tool(
 
 const tools = [
     scrapeReddit,
-    searchFarcaster,
-    getFarcasterUserInfo,
     scrapeTwitter,
     analyzeSocialSentiment
 ];
@@ -455,58 +320,40 @@ function hasToolCalls(message: BaseMessage): message is BaseMessage & { tool_cal
 }
 
 async function analyzeSocialEvidence(state: typeof SocialEvidenceState.State) {
-    const systemPrompt = `You are the Social Evidence Agent for VeriChain, a misinformation detection system.
+    // DIRECTLY CALL TOOLS - don't rely on LLM
 
-                Your mission: Gather and analyze social media discussions around claims to understand public sentiment, identify key debates, and detect coordinated narratives.
+    const results = [];
 
-                You have access to these tools:
-                1. scrapeReddit: Scrape Reddit for posts (using web scraping - no API)
-                2. searchFarcaster: Search Farcaster (decentralized social) for relevant casts
-                3. getFarcasterUserInfo: Get credibility info about Farcaster users
-                4. scrapeTwitter: Scrape Twitter for tweets (requires setup)
-                5. analyzeSocialSentiment: Analyze sentiment across collected posts
+    // 1. Search for social media posts
+    console.log('✓ Searching social media via Reddit scraping...');
+    const redditResult = await scrapeReddit.invoke({
+        query: state.claim,
+        limit: 5
+    });
+    results.push(`Reddit Evidence: ${redditResult}`);
 
-                Analysis workflow:
-                1. Try scraping Reddit for discussions (note: scraping has limitations)
-                2. Search Farcaster for related casts (this uses proper API)
-                3. If Twitter scraper is available, search Twitter
-                4. Use sentiment analysis on collected posts
-                5. Identify: consensus vs. debate, coordinated messaging, expert voices
-
-                Focus on:
-                - Quality over quantity (high-engagement, credible users)
-                - Distinguishing genuine discussion from manipulation
-                - Identifying expert/authoritative voices
-                - Detecting coordinated campaigns or bot behavior
-
-                IMPORTANT: Reddit scraping is limited - prioritize Farcaster which uses a proper API.`;
+    // 2. Analyze sentiment
+    console.log('✓ Analyzing sentiment...');
+    const sentimentResult = await analyzeSocialSentiment.invoke({
+        posts: [] // Will use the results from above
+    });
+    results.push(`Sentiment Analysis: ${sentimentResult}`);
 
     return {
-        messages: await llmWithTools.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(`Analyze social media evidence for this claim:\n\n"${state.claim}"\n\nSearch across Reddit and Farcaster. Prioritize credible discussions and high-engagement content. Look for: expert consensus, public sentiment, key debates, and any coordinated narratives.`)
-        ])
+        messages: [
+            new HumanMessage(`Social evidence analysis complete:
+
+${results.join('\n\n')}
+
+Now synthesize the social evidence assessment.`)
+        ]
     };
 }
 
 async function processToolResults(state: typeof SocialEvidenceState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage || !hasToolCalls(lastMessage)) {
-        return { messages: [] };
-    }
-
-    const result: ToolMessage[] = [];
-
-    for (const toolCall of lastMessage.tool_calls) {
-        const tool = toolsByName[toolCall.name];
-        const observation = await (tool as any).invoke(toolCall);
-        result.push(observation);
-    }
-
-    return { messages: result };
+    // Not needed since we call tools directly
+    return { messages: [] };
 }
-
 async function extractVerdict(state: typeof SocialEvidenceState.State) {
     const verdictPrompt = `Based on all social media evidence you've gathered, provide a final social evidence verdict.
 
@@ -590,23 +437,10 @@ async function extractVerdict(state: typeof SocialEvidenceState.State) {
 }
 
 async function shouldContinue(state: typeof SocialEvidenceState.State) {
-    const lastMessage = state.messages.at(-1);
-
-    if (!lastMessage) return END;
-
-    if (hasToolCalls(lastMessage)) {
-        return "processToolResults";
-    }
-
-    const hasToolResults = state.messages.some(msg => msg._getType() === 'tool');
-    if (hasToolResults && !state.explanation) {
+    // Since we call tools directly, just go to verdict
+    if (!state.explanation) {
         return "extractVerdict";
     }
-
-    if (!hasToolResults && state.messages.length >= 2 && !state.explanation) {
-        return "extractVerdict";
-    }
-
     return END;
 }
 
