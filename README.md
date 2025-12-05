@@ -9,6 +9,30 @@
 
 VeriChain combines agentic AI with community-driven verification to create an immutable, decentralized database of verified information. Built on blockchain technology, it serves as a verification layer that platforms can query via API rather than being a standalone social platform.
 
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/home_page.png" alt="Home Page" width="300"/><br/>
+      <b>Home Page</b><br/>
+      <em>Beautiful landing with water animation</em>
+    </td>
+    <td align="center">
+      <img src="docs/profile_page.png" alt="Profile Page" width="300"/><br/>
+      <b>Profile Dashboard</b><br/>
+      <em>Manage account & social profiles</em>
+    </td>
+    <td align="center">
+      <img src="docs/submit_page.png" alt="Submit Claim" width="300"/><br/>
+      <b>Submit Claim</b><br/>
+      <em>AI-powered claim verification</em>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 🌟 Overview
 
 VeriChain is a decentralized verification protocol combining community consensus, economic incentives, and AI analysis to create a portable verification layer. Rather than building another social platform, VeriChain serves as verification infrastructure that any platform can integrate via API.
@@ -50,46 +74,125 @@ VeriChain creates a decentralized marketplace where specialized AI agents verify
 ## 📁 Project Structure
 
 ```
-veriChain/
-├── web3/                    # Smart contracts and blockchain logic
-│   ├── contracts/           # Solidity smart contracts
-│   │   ├── FactCheckRegistry.sol
-│   │   └── StakePool.sol
-│   ├── scripts/            # Deployment scripts
-│   │   ├── deploy.ts
+VeriChain/
+├── docs/                        # Documentation and screenshots
+│   ├── home_page.png            # Landing page screenshot
+│   ├── profile_page.png         # Profile dashboard screenshot
+│   └── submit_page.png          # Submit claim page screenshot
+│
+├── web3/                        # Smart contracts and blockchain logic
+│   ├── contracts/               # Solidity smart contracts
+│   │   ├── ClaimRegistry.sol    # Claim submission & management
+│   │   ├── VerificationMarket.sol # Staking & voting marketplace
+│   │   ├── Reputation.sol       # User reputation tracking
+│   │   └── VerifierBadge.sol    # NFT badges for verifiers
+│   ├── scripts/                 # Deployment scripts
+│   │   ├── deploy_all.ts        # Deploy all contracts
+│   │   ├── deploy_ClaimRegistry.ts
+│   │   ├── deploy_VerificationMarket.ts
+│   │   ├── deploy_Reputation.ts
+│   │   ├── deploy_VerifierBadge.ts
 │   │   └── checkOwner.ts
-│   ├── test/               # Contract tests
-│   │   └── FactCheckRegistry_StakePool.test.ts
-│   ├── artifacts/          # Compiled contracts
-│   ├── cache/              # Hardhat cache
-│   ├── typechain-types/    # TypeScript bindings
-│   ├── hardhat.config.ts   # Hardhat configuration
+│   ├── test/                    # Contract tests
+│   │   ├── ClaimRegistry.test.ts
+│   │   ├── VerificationMarket.test.ts
+│   │   ├── Reputation.test.ts
+│   │   └── VerifierBadge.test.ts
+│   ├── artifacts/               # Compiled contracts
+│   ├── typechain-types/         # TypeScript bindings
+│   ├── hardhat.config.ts
 │   └── package.json
-├── backend/                 # API server and AI integration
+│
+├── backend/                     # API server and AI agents
 │   ├── src/
-│   │   ├── config/         # Environment configuration
-│   │   │   └── env.config.ts
-│   │   ├── routes/         # API routes
-│   │   │   └── analyze.routes.ts
-│   │   ├── services/       # Business logic (Gemini AI)
-│   │   │   └── gemini.service.ts
-│   │   ├── types/          # TypeScript type definitions
+│   │   ├── agents/              # AI verification agents
+│   │   │   ├── resultAgentOrchestrator.ts  # Main orchestrator
+│   │   │   ├── claimIntakeAgent.ts         # Claim preprocessing
+│   │   │   ├── citationAgent.ts            # Source citation verification
+│   │   │   ├── textForensicsAgent.ts       # Text analysis
+│   │   │   ├── mediaForensicsAgent.ts      # Image/video analysis
+│   │   │   ├── sourceCredAgent.ts          # Source credibility scoring
+│   │   │   ├── socialEvidenceAgent.ts      # Social media evidence
+│   │   │   ├── communityRoutingAgent.ts    # Community routing
+│   │   │   ├── patternAgent.ts             # Pattern detection
+│   │   │   └── scoringAgent.ts             # Final scoring
+│   │   ├── routes/              # API endpoints
+│   │   │   ├── auth.routes.ts   # Authentication routes
+│   │   │   ├── claim.routes.ts  # Claim CRUD operations
+│   │   │   └── analyze.routes.ts # AI analysis endpoints
+│   │   ├── config/              # Configuration
+│   │   │   ├── env.config.ts    # Environment variables
+│   │   │   └── db.config.ts     # Database configuration
+│   │   ├── services/            # Business logic
+│   │   │   └── gemini.service.ts # Google Gemini AI integration
+│   │   ├── utils/               # Utility functions
+│   │   │   ├── scraper.ts       # Web scraping utilities
+│   │   │   ├── socialFetcher.ts # Social media data fetching
+│   │   │   ├── email.ts         # Email utilities
+│   │   │   └── llm.ts           # LLM helper functions
+│   │   ├── abis/                # Contract ABIs
+│   │   │   ├── ClaimRegistry.json
+│   │   │   ├── VerificationMarket.json
+│   │   │   ├── Reputation.json
+│   │   │   └── VerifierBadge.json
+│   │   ├── types/               # TypeScript definitions
+│   │   │   ├── agent.types.ts
 │   │   │   └── index.ts
-│   │   └── index.ts        # Express server
-│   ├── dist/               # Compiled JavaScript
+│   │   ├── middleware/          # Express middleware
+│   │   └── index.ts             # Express server entry
+│   ├── prisma/                  # Database ORM
+│   │   └── schema.prisma        # Database schema
+│   ├── uploads/                 # File uploads directory
 │   ├── package.json
 │   └── tsconfig.json
-└── frontend/               # React frontend
+│
+└── frontend/                    # React frontend application
     ├── src/
-    │   ├── App.tsx         # Main application component
-    │   ├── main.jsx        # React entry point
-    │   ├── index.css       # Global styles
-    │   └── vite-env.d.ts   # Vite type definitions
-    ├── public/             # Static assets
-    ├── package.json
-    ├── vite.config.js      # Vite configuration
-    ├── tailwind.config.js  # Tailwind CSS config
-    └── postcss.config.js   # PostCSS configuration
+    │   ├── components/          # Reusable UI components
+    │   │   ├── Nav.tsx          # Landing page navigation
+    │   │   ├── AppNav.tsx       # In-app navigation sidebar
+    │   │   ├── WaterCanvas.tsx  # Animated water background
+    │   │   ├── WaterFillLoader.tsx # Page loading animation
+    │   │   ├── TerminalLoader.tsx  # Terminal-style loader
+    │   │   ├── ProtectedRoute.tsx  # Auth route guard
+    │   │   ├── ErrorBoundary.tsx   # Error handling
+    │   │   └── AppFooter.tsx    # Footer component
+    │   ├── pages/               # Application pages
+    │   │   ├── Home.tsx         # Landing page with water animation
+    │   │   ├── Auth.tsx         # Authentication (OAuth/Email/Wallet)
+    │   │   ├── Onboarding.tsx   # User onboarding flow
+    │   │   ├── Profile.tsx      # Profile dashboard
+    │   │   ├── SubmitClaim.tsx  # Chat-based claim submission
+    │   │   ├── ViewClaims.tsx   # Active/completed claims list
+    │   │   ├── ClaimsSubmit.tsx # Alternative claim submission
+    │   │   ├── Claims.tsx       # Claims management
+    │   │   ├── Dashboard.tsx    # User dashboard
+    │   │   ├── Explore.tsx      # Explore trending claims
+    │   │   ├── Leaderboard.tsx  # User rankings
+    │   │   └── Notifications.tsx # User notifications
+    │   ├── context/             # React context providers
+    │   │   └── AuthContext.tsx  # Authentication state
+    │   ├── services/            # API service layer
+    │   │   ├── api.ts           # Backend API client
+    │   │   └── walletService.ts # Wallet integration
+    │   ├── config/              # Frontend configuration
+    │   │   └── contracts.ts     # Contract addresses
+    │   ├── styles/              # CSS stylesheets
+    │   │   ├── AppPages.css     # Main page styles
+    │   │   └── TerminalStyles.css
+    │   ├── lib/                 # Utility libraries
+    │   │   └── shaders.ts       # WebGL shaders
+    │   ├── assets/              # Static assets
+    │   ├── App.tsx              # Main application router
+    │   ├── App.css              # App-level styles
+    │   ├── index.css            # Global styles
+    │   └── main.jsx             # React entry point
+    ├── public/                  # Static public assets
+    ├── index.html               # HTML entry point
+    ├── vite.config.js           # Vite configuration
+    ├── tailwind.config.js       # Tailwind CSS config
+    ├── postcss.config.js        # PostCSS configuration
+    └── package.json
 ```
 
 ## 🛠️ Setup & Installation
@@ -109,26 +212,76 @@ cd veriChain
 
 ### 2. Environment Setup
 
-Create `.env` files in both `web3/` and `backend/` directories:
+Create `.env` files in `web3/`, `backend/`, and `frontend/` directories:
 
 **web3/.env**
 ```env
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
 PRIVATE_KEY=your_wallet_private_key
 ```
 
 **backend/.env**
 ```env
-GEMINI_API_KEY=your_gemini_api_key
-PORT=3001
+# Server
+PORT=8080
 NODE_ENV=development
+
+# AI/LLM APIs (Not all are required - see notes in .env.example)
+GEMINI_API_KEY=your_gemini_api_key          # Required - Primary AI engine
+PERPLEXITY_API_KEY=your_perplexity_key      # Optional - Enhanced search
+OPENAI_API_KEY=                              # Optional
+DEEPSEEK_API_KEY=                            # Optional
+QWEN_API_KEY=                                # Optional
+
+# LangSmith Tracing (Optional - for debugging)
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=
+
+# Web Scraping & Search
+SCRAPER_API_URL=http://localhost:3000/v1/
+BRAVE_API_KEY=
+SERP_API_KEY=
+
+# Fact-Checking APIs
+GOOGLE_FACTCHECK_API_KEY=
+CLAIMBUSTER_API_KEY=
+WORDLIFT_API=
+
+# Social Media
+NEYNAR_API_KEY=                              # Farcaster integration
+
+# Media Analysis
+HIVE_ACCESS_ID=
+HIVE_SECRET_KEY=
+SIGHTENGINE_API_USER=
+SIGHTENGINE_API_SECRET=
+
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/db
+
+# Email
+NODEMAILER_USER=
+NODEMAILER_PASSWORD=
+
+# Blockchain
+RPC_URL=
+PRIVATE_KEY=
+CLAIM_REGISTRY_ADDRESS=
+STAKING_VOTING_ADDRESS=
+
+# Auth
+JWT_SECRET=your_jwt_secret
 ```
+
+> **Note**: Not all API keys are required. See `backend/.env.example` for details on which are actively used.
 
 **frontend/.env**
 ```env
-VITE_API_URL=http://localhost:3001
-VITE_FACT_CHECK_REGISTRY_ADDRESS=your_deployed_registry_address
-VITE_STAKE_POOL_ADDRESS=your_deployed_stake_pool_address
+VITE_API_URL=http://localhost:8080
+VITE_CLAIM_REGISTRY_ADDRESS=your_deployed_registry_address
+VITE_VERIFICATION_MARKET_ADDRESS=your_deployed_market_address
 ```
 
 ### 3. Smart Contracts Setup
@@ -198,195 +351,58 @@ npm run dev
 # Open http://localhost:5173 in your browser
 ```
 
+## 🛠️ Setup
+
+### Quick Start Commands
+
+```bash
+# Clone and install all dependencies
+git clone <repository-url>
+cd VeriChain
+
+# Backend
+cd backend && npm install && npm run build && npm start
+
+# Frontend (new terminal)
+cd frontend && npm install && npm run dev
+
+# Smart Contracts (new terminal)
+cd web3 && npm install && npx hardhat compile
+npx hardhat run scripts/deploy_all.ts --network sepolia
+```
+
 ## 🔄 Workflow
 
-1. **Claim Submission**: User submits a claim via frontend or API
-2. **AI Analysis**: Gemini AI analyzes the claim and provides confidence score
-3. **Community Staking**: Users deposit ETH and stake on verdict accuracy
-4. **Verdict Finalization**: System combines AI confidence with community consensus
-5. **On-Chain Recording**: Final verdict and all stakes recorded immutably on blockchain
+### AI Verification Agents
 
-## 🎯 Verdict Logic
+VeriChain uses a multi-agent architecture where specialized AI agents analyze claims from different perspectives:
 
-The platform uses a sophisticated decision-making process:
+| Agent | Purpose |
+|-------|---------|
+| **Claim Intake Agent** | Preprocesses and structures incoming claims for analysis |
+| **Citation Agent** | Verifies sources and cross-references cited information |
+| **Text Forensics Agent** | Analyzes linguistic patterns and logical consistency |
+| **Media Forensics Agent** | Detects manipulated images, videos, and audio |
+| **Source Credibility Agent** | Evaluates the trustworthiness of information sources |
+| **Social Evidence Agent** | Gathers corroborating evidence from social platforms |
+| **Community Routing Agent** | Routes claims to appropriate community experts |
+| **Pattern Agent** | Identifies known misinformation patterns |
+| **Scoring Agent** | Aggregates agent outputs into final confidence score |
+| **Result Orchestrator** | Coordinates all agents and produces the final verdict |
 
-- **TRUE**: AI confident (≥70%) AND community votes TRUE AND stakes not close
-- **FALSE**: AI not confident (<70%) AND community votes FALSE AND stakes not close  
-- **UNCLEAR**: Close stakes OR conflicting AI/community signals
+### Verification Process
 
-### Smart Contract Logic
-```solidity
-bool communityVotesTRUE = check.stakesFor > check.stakesAgainst;
-bool aiVotesTRUE = check.confidenceScore >= thresholdValueForAi;
+1. **AI Inference**: Claims are processed through our multi-agent system for comprehensive analysis
+2. **Community Voting**: When needed, verified community members stake tokens to vote on claim accuracy
+3. **Consensus**: Final verdict combines AI confidence score with community consensus
+4. **Rewards**: Correct voters earn rewards from their stake, while incorrect voters face penalties
+5. **On-Chain Recording**: All verdicts are permanently stored on the blockchain
 
-// Check if stakes are close (within 20% difference)
-uint256 totalStakes = check.stakesFor + check.stakesAgainst;
-bool stakesAreClose = totalStakes > 0 && 
-    (check.stakesFor * 100 / totalStakes > 40 && check.stakesFor * 100 / totalStakes < 60);
+### Leaderboard & Incentives
 
-// Final verdict logic
-if(aiVotesTRUE && communityVotesTRUE && !stakesAreClose){
-    check.verdict = Verdict.TRUE;
-}
-else if(!aiVotesTRUE && !communityVotesTRUE && !stakesAreClose){
-    check.verdict = Verdict.FALSE;
-}
-else{
-    check.verdict = Verdict.UNCLEAR;
-}
-```
-
-## 🔧 API Endpoints
-
-### Health Check
-```
-GET /api/health
-```
-
-### Analyze Claim
-```
-POST /api/analyze
-Content-Type: application/json
-
-{
-  "claim": "Your claim here"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "verdict": "TRUE|FALSE|UNCLEAR",
-    "confidence": 85,
-    "analysis": "Brief explanation of reasoning",
-    "sources": ["Source 1", "Source 2"]
-  }
-}
-```
-
-### Batch Analysis
-```
-POST /api/analyze/batch
-Content-Type: application/json
-
-{
-  "claims": ["claim1", "claim2", "claim3"]
-}
-```
-
-## 🏛️ Smart Contract Details
-
-### FactCheckRegistry Contract
-
-**Key Functions:**
-- `submitFactCheck(string _claim, string _aiAnalysis, uint8 _confidenceScore)`: Submit a new claim
-- `addStake(uint256 _id, bool _supportVerdict, uint256 _amount)`: Stake on a claim
-- `finalizeVerdict(uint256 _id)`: Finalize verdict (owner only)
-- `getFactCheck(uint256 _id)`: Get claim details
-- `getStakes(uint256 _id)`: Get all stakes for a claim
-
-**Events:**
-- `FactCheckSubmitted`: Emitted when a claim is submitted
-- `StakeAdded`: Emitted when a stake is added
-- `VerdictFinalized`: Emitted when verdict is finalized
-
-### StakePool Contract
-
-**Key Functions:**
-- `deposit()`: Deposit ETH to stake pool
-- `withdraw(uint256 _amount)`: Withdraw ETH from stake pool
-- `lockTokensForStake(address _user, uint256 _amount)`: Lock tokens for staking
-- `unlockTokens(address _user, uint256 _amount)`: Unlock tokens after staking
-- `claimRewards(address _user, uint256 _stakedAmount)`: Claim staking rewards
-- `applyPenalty(address _user, uint256 _stakedAmount)`: Apply penalty for wrong votes
-
-**Reward System:**
-- Correct voters earn 10% reward
-- Incorrect voters lose 5% penalty
-- Tokens are locked during active staking
-
-## 🎨 Frontend Features
-
-### User Interface
-- **Modern Design**: Gradient backgrounds with glassmorphism effects
-- **Responsive Layout**: Works on desktop and mobile devices
-- **Real-time Updates**: Live staking and verdict updates
-- **Wallet Integration**: MetaMask connection with balance display
-
-### Key Components
-- **Landing Page**: Welcome screen with wallet connection
-- **Claim Submission**: Text area for submitting new claims
-- **Voting Interface**: Staking interface with support/dispute options
-- **Claim Display**: Real-time claim status and staking information
-- **Balance Management**: Deposit/withdraw from stake pool
-
-### State Management
-- React hooks for state management
-- Ethers.js for blockchain interactions
-- Real-time balance updates
-- Error handling and user feedback
-
-## 🚀 Deployment
-
-### Smart Contracts
-```bash
-cd web3
-npx hardhat run scripts/deploy.ts --network sepolia
-```
-
-### Backend
-```bash
-cd backend
-npm run build
-npm start
-```
-
-### Frontend
-```bash
-cd frontend
-npm run build
-# Deploy dist/ folder to your hosting service
-```
-
-## 🔮 Current Implementation
-
-We've deployed a working prototype on Sepolia testnet with:
-
-- ✅ **Smart Contracts**: FactCheckRegistry and StakePool deployed and tested
-- ✅ **React dApp**: Full-featured frontend with wallet integration
-- ✅ **AI Integration**: Gemini 2.5 Pro providing preliminary verdicts
-- ✅ **Staking Mechanisms**: Real ETH staking with rewards and penalties
-- ✅ **Immutable Records**: All verification data stored on blockchain
-- ✅ **API Infrastructure**: RESTful API for claim analysis
-
-This proves the core concept works and demonstrates scalability potential.
-
-## 🎯 Why This Works
-
-Traditional fact-checking can't scale. AI-only solutions lack context. Reddit-style voting gets gamed. VeriChain combines all three:
-
-- **Human Judgment**: Catches nuance and context
-- **AI Analysis**: Prevents attacks and provides consistency
-- **Economic Stakes**: Makes gaming expensive
-- **Blockchain Transparency**: Auditable and immutable
-
-## 🏆 Key Advantages
-
-- **Portable**: Platforms integrate via API—no need to build their own verification system
-- **Sustainable**: Agents earning money creates permanent incentive to improve accuracy
-- **Decentralized**: No single entity controls verification; multiple agents compete
-- **Anti-Gaming**: Attacking requires controlling most capital AND fooling AI AND manipulating community
-- **Transparent**: Every verification shows which agents analyzed it and why
-
-## 🎯 Target Market
-
-- **DAOs**: Governance verification and proposal fact-checking
-- **Crypto Communities**: Social media misinformation detection
-- **News Organizations**: Fact-checking infrastructure
-- **Decentralized Social Networks**: Content verification layer
-- **Enterprises**: Internal claim verification systems
+- **Rankings**: Users are ranked based on their verification accuracy and participation
+- **Rewards**: Winners of votes receive token rewards proportional to their stake
+- **NFT Badges**: **Top 5 verifiers** on the leaderboard get minted exclusive Verifier Badge NFTs
 
 ## 💰 Business Model
 
@@ -394,16 +410,6 @@ Traditional fact-checking can't scale. AI-only solutions lack context. Reddit-st
 - **Agent Compensation**: Based on accuracy and performance
 - **Enterprise API**: Licensing for large-scale integrations
 - **Data Access**: Research and analytics for academic institutions
-
-## 🔮 Future Roadmap
-
-- **Decentralized Oracle**: Evolve into a fully decentralized oracle for misinformation detection
-- **Platform Integration**: API integrations with Twitter, Reddit, news aggregators
-- **Advanced AI Models**: Integration with multiple AI providers for enhanced accuracy
-- **Governance Token**: Community governance for platform parameters
-- **Cross-Chain Support**: Expand to multiple blockchain networks
-- **Image/Video Analysis**: Multi-modal fact-checking capabilities
-- **Reputation System**: Agent reputation based on historical accuracy
 
 ## 🤝 Contributing
 
@@ -417,34 +423,6 @@ Traditional fact-checking can't scale. AI-only solutions lack context. Reddit-st
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🔗 Links
-
-- **Live Demo**: [veri-chain-eight.vercel.app](https://veri-chain-eight.vercel.app)
-- **Backend API**: [verichain-gwmq.onrender.com](https://verichain-gwmq.onrender.com)
-- **Devfolio Project**: [VeriChain on Devfolio](https://devfolio.co/projects/verichain-d005)
-- **Presentation**: https://www.canva.com/design/DAG2DtXAqic/4J_Ia01bA7rJYezofOWLXA/edit
-
-## 🙏 Acknowledgments
-
-- **Google Gemini AI** for providing the AI analysis capabilities
-- **Hardhat framework** for smart contract development
-- **Express.js** for the backend API
-- **React & Vite** for the frontend framework
-- **Ethers.js** for Web3 integration
-- **Tailwind CSS** for styling
-- **The Web3 community** for inspiration and support
-
-## 🛡️ Security Considerations
-
-- **Smart Contract Audits**: Contracts should be audited before mainnet deployment
-- **API Rate Limiting**: Implement rate limiting for AI analysis endpoints
-- **Input Validation**: All user inputs are validated and sanitized
-- **Private Key Security**: Never commit private keys to version control
-- **Environment Variables**: Use secure environment variable management
-
-
 ---
 
 **Built with ❤️ by Team Baked**
-
-*Decentralized verification for a more truthful world.*
