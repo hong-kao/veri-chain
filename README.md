@@ -16,17 +16,17 @@ VeriChain combines agentic AI with community-driven verification to create an im
     <td align="center">
       <img src="docs/home_page.png" alt="Home Page" width="300"/><br/>
       <b>Home Page</b><br/>
-      <em>Beautiful landing with water animation</em>
+      <em>With a cool water effect</em>
     </td>
     <td align="center">
       <img src="docs/profile_page.png" alt="Profile Page" width="300"/><br/>
       <b>Profile Dashboard</b><br/>
-      <em>Manage account & social profiles</em>
+      <em>Manage your account</em>
     </td>
     <td align="center">
       <img src="docs/submit_page.png" alt="Submit Claim" width="300"/><br/>
       <b>Submit Claim</b><br/>
-      <em>AI-powered claim verification</em>
+      <em>Our Agentic AI-engine</em>
     </td>
   </tr>
 </table>
