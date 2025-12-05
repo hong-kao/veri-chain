@@ -45,7 +45,7 @@ export default function WaterFillLoader({ onComplete }: WaterFillLoaderProps) {
 
             // Draw text
             const fontSize = 200;
-            ctx.font = `bold ${fontSize}px Source Code Pro`;
+            ctx.font = `${fontSize}px Gavency`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
@@ -118,7 +118,14 @@ export default function WaterFillLoader({ onComplete }: WaterFillLoaderProps) {
             }
         };
 
-        animate();
+        const font = new FontFace('Gavency', 'url("/Gavency Free Regular.otf")');
+        font.load().then(() => {
+            document.fonts.add(font);
+            animate();
+        }).catch(err => {
+            console.error("Failed to load Gavency font:", err);
+            animate();
+        });
 
         return () => {
             if (animationFrame) {

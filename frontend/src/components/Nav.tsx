@@ -1,8 +1,18 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Nav() {
-    const { isConnected } = useAuth();
+    const { isConnected, logout } = useAuth();
+    const navigate = useNavigate();
+
+    // Check if onboarding is complete (user has profile saved)
+    const hasCompletedOnboarding = !!sessionStorage.getItem('claims-user-profile');
+    const isFullyLoggedIn = isConnected && hasCompletedOnboarding;
+
+    const handleLogout = () => {
+        logout();
+        navigate('/');
+    };
 
     return (
         <nav>
@@ -15,26 +25,48 @@ export default function Nav() {
             </div>
 
             <div className="nav-items">
-                {isConnected && (
+                {isFullyLoggedIn ? (
                     <>
-                        <Link to="/dashboard">
-                            <p>Dashboard</p>
+                        <Link to="/profile">
+                            <p>Profile</p>
                         </Link>
                         <Link to="/claims">
                             <p>Claims</p>
                         </Link>
-                        <Link to="/leaderboard">
-                            <p>Leaderboard</p>
+                        <Link to="/submit">
+                            <p>Submit</p>
                         </Link>
+                        <button
+                            className="nav-link"
+                            onClick={handleLogout}
+                            style={{
+                                marginLeft: '1em',
+                                fontSize: '14px',
+                                padding: '0.4em 1em',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Log Out
+                        </button>
                     </>
-                )}
-                {!isConnected && (
+                ) : (
                     <>
-                        <Link to="/auth?mode=signin">
-                            <button className="nav-link">Sign In</button>
+                        <Link to="/auth" state={{ mode: 'signup' }}>
+                            <button className="nav-link" style={{
+                                fontSize: '14px',
+                                padding: '0.4em 1em'
+                            }}>
+                                Sign Up
+                            </button>
                         </Link>
-                        <Link to="/auth?mode=signup">
-                            <button className="nav-link nav-link-signup">Sign Up</button>
+                        <Link to="/auth" state={{ mode: 'login' }}>
+                            <button className="nav-link" style={{
+                                fontSize: '14px',
+                                padding: '0.4em 1em',
+                                background: 'rgba(255, 255, 255, 0.1)'
+                            }}>
+                                Log In
+                            </button>
                         </Link>
                     </>
                 )}

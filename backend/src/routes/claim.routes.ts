@@ -1,11 +1,13 @@
 import express from 'express';
 import multer from 'multer';
-import { PrismaClient } from '../generated/prisma/index.js';
+import jwt from 'jsonwebtoken';
 import ResultOrchestrator from '../agents/resultAgentOrchestrator.js';
+import prisma from '../config/db.config.js';
 import { env } from '../config/env.config.js';
 
+const JWT_SECRET = env.JWT_SECRET || 'verichain-secret-fallback';
+
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Configure multer for file uploads
 const upload = multer({
@@ -59,13 +61,29 @@ router.post('/submit', upload.fields([
     { name: 'videos', maxCount: 3 }
 ]), async (req, res) => {
     try {
+        // Extract user ID from JWT token
+        const authHeader = req.headers.authorization;
+        let userId = 1; // Fallback default
+
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            try {
+                const token = authHeader.substring(7);
+                const decoded = jwt.verify(token, JWT_SECRET) as any;
+                userId = decoded.userId;
+                console.log(`🔐 Authenticated user ID: ${userId}`);
+            } catch (err) {
+                console.warn('⚠️ Invalid token, using default submitterId');
+            }
+        } else {
+            console.warn('⚠️ No auth token provided, using default submitterId');
+        }
+
         const {
             claim,
             claimType = 'OTHER',
             platform,
             platformUrl,
-            platformAuthor,
-            submitterId = 1
+            platformAuthor
         } = req.body;
 
         // Validation
@@ -92,12 +110,26 @@ router.post('/submit', upload.fields([
 
         console.log(`📎 Attachments: ${imageUrls.length} images, ${videoUrls.length} videos`);
 
+        // Determine ClaimType based on content
+        let derivedClaimType = 'text';
+        const hasImages = imageUrls.length > 0;
+        const hasVideos = videoUrls.length > 0;
+        const hasLinks = extractUrls(claim).length > 0;
+
+        if (hasVideos) {
+            derivedClaimType = hasImages || hasLinks ? 'mixed' : 'video';
+        } else if (hasImages) {
+            derivedClaimType = hasLinks ? 'mixed' : 'image';
+        } else if (hasLinks) {
+            derivedClaimType = 'link';
+        }
+
         // Create claim input
         const claimInput = {
-            submitterId: parseInt(submitterId),
+            submitterId: userId,  // Use extracted userId from JWT
             rawInput: claim,
             normalizedText: claim.trim(),
-            claimType,
+            claimType: derivedClaimType,
             platform: platform || null,
             platformUrl: platformUrl || null,
             platformAuthor: platformAuthor || null,
@@ -111,8 +143,12 @@ router.post('/submit', upload.fields([
             try {
                 const claimId = await orchestrator.processClaimIntake(claimInput);
 
-                // Start background processing
-                processClaimBackground(claimId, orchestrator);
+                console.log(`✅ Claim ${claimId} created, starting background processing...`);
+
+                // Start background processing (don't await - let it run in background)
+                processClaimBackground(claimId, orchestrator).catch(err => {
+                    console.error(`❌ Background processing failed for claim ${claimId}:`, err);
+                });
 
                 return res.status(201).json({
                     success: true,
@@ -150,9 +186,9 @@ router.post('/submit', upload.fields([
  * GET /api/claims/:claimId/status
  * Get the current status and results of a claim
  */
-router.get('/:claimId/status', async (req, res) => {
+router.get('/:id/status', async (req, res) => {
     try {
-        const claimId = parseInt(req.params.claimId);
+        const claimId = parseInt(req.params.id);
 
         if (isNaN(claimId)) {
             return res.status(400).json({ error: 'Invalid claim ID' });
@@ -162,8 +198,8 @@ router.get('/:claimId/status', async (req, res) => {
         const claim = await prisma.claim.findUnique({
             where: { id: claimId },
             include: {
-                agentResults: true,
-                votingSession: true
+                agent_results: true,
+                voting_sessions: true
             }
         });
 
@@ -177,13 +213,13 @@ router.get('/:claimId/status', async (req, res) => {
         let finalVerdict = null;
         let confidence = null;
 
-        if (claim.finalVerdict) {
+        if (claim.final_verdict) {
             status = 'completed';
-            finalVerdict = claim.finalVerdict;
-        } else if (claim.aiVerdict) {
-            status = claim.votingSession ? 'voting' : 'ai_complete';
-            aiVerdict = claim.aiVerdict;
-            confidence = claim.aiConfidence;
+            finalVerdict = claim.final_verdict;
+        } else if (claim.ai_verdict) {
+            status = claim.voting_sessions.length > 0 ? 'voting' : 'ai_complete';
+            aiVerdict = claim.ai_verdict;
+            confidence = claim.ai_confidence;
         }
 
         res.json({
@@ -191,26 +227,26 @@ router.get('/:claimId/status', async (req, res) => {
             claimId,
             status,
             claim: {
-                text: claim.normalizedText,
-                type: claim.claimType,
+                text: claim.normalized_text,
+                type: claim.claim_type,
                 platform: claim.platform,
-                submittedAt: claim.createdAt
+                submittedAt: claim.created_at
             },
             results: {
                 aiVerdict,
                 aiConfidence: confidence,
                 finalVerdict,
-                agentResults: claim.agentResults.map((ar: any) => ({
-                    agent: ar.agentType,
+                agentResults: claim.agent_results.map((ar: any) => ({
+                    agent: ar.agent_name,
                     verdict: ar.verdict,
                     confidence: ar.confidence,
-                    completedAt: ar.createdAt
+                    completedAt: ar.created_at
                 }))
             },
-            voting: claim.votingSession ? {
-                sessionId: claim.votingSession.id,
-                totalVotes: claim.votingSession.totalVotes,
-                votingEndsAt: claim.votingSession.votingEndsAt
+            voting: claim.voting_sessions.length > 0 ? {
+                sessionId: claim.voting_sessions[0].id,
+                status: claim.voting_sessions[0].status,
+                closesAt: claim.voting_sessions[0].closes_at
             } : null
         });
 
@@ -238,17 +274,17 @@ router.get('/:claimId', async (req, res) => {
         const claim = await prisma.claim.findUnique({
             where: { id: claimId },
             include: {
-                agentResults: {
-                    orderBy: { createdAt: 'asc' }
+                agent_results: {
+                    orderBy: { created_at: 'asc' }
                 },
-                votingSession: {
+                voting_sessions: {
                     include: {
                         votes: {
                             include: {
                                 voter: {
                                     select: {
                                         id: true,
-                                        walletAddress: true
+                                        wallet_address: true
                                     }
                                 }
                             }
@@ -313,9 +349,9 @@ async function processClaimBackground(claimId: number, orch: ResultOrchestrator)
             await prisma.claim.update({
                 where: { id: claimId },
                 data: {
-                    aiVerdict: 'UNCLEAR',
-                    aiConfidence: 0,
-                    finalVerdict: 'UNCLEAR'
+                    ai_verdict: 'unclear',
+                    ai_confidence: 0,
+                    final_verdict: 'unclear'
                 }
             });
         } catch (dbError) {

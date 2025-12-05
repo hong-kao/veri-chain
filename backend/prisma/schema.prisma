@@ -12,9 +12,10 @@ datasource db {
 
 model User {
   id                Int       @id @default(autoincrement())
-  wallet_address    String    @unique
+  wallet_address    String?   @unique
+  password_hash     String?
   full_name         String?
-  email             String?
+  email             String?   @unique
   reddit_profile    String?
   x_profile         String?
   farcaster_profile String?

@@ -1,63 +1,97 @@
 import { Link } from "react-router-dom";
-import "./Dashboard.css";
-import "./Explore.css";
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import "../styles/TerminalStyles.css";
+
+interface Claim {
+    id: number;
+    title: string;
+    content: string;
+    status: string;
+    confidence: number;
+    views: number;
+}
 
 export default function Explore() {
+    const { user } = useAuth();
+    const [claims, setClaims] = useState<Claim[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('http://localhost:3000/api/claims/explore')
+            .then(res => res.json())
+            .then(data => {
+                setClaims(data);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("Failed to fetch explore claims:", err);
+                setLoading(false);
+            });
+    }, []);
+
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link">
-                        Leaderboard
-                    </Link>
-                </div>
-            </nav>
-
-            <div className="dashboard-container">
-                <h1>Explore Claims</h1>
-                <p className="explore-subtitle">Discover and verify claims from the community</p>
-
-                <div className="search-bar">
-                    <input type="text" placeholder="Search claims..." />
-                    <button>Search</button>
+        <div className="terminal-page-container">
+            <div className="terminal-window crt">
+                {/* Window Header */}
+                <div className="terminal-header">
+                    <div className="terminal-controls">
+                        <span className="control close"></span>
+                        <span className="control minimize"></span>
+                        <span className="control maximize"></span>
+                    </div>
+                    <div className="terminal-title">user@{user.displayName || 'guest'}:~/network_sniffer</div>
                 </div>
 
-                <div className="explore-filters">
-                    <button className="filter-btn active">All</button>
-                    <button className="filter-btn">Technology</button>
-                    <button className="filter-btn">Finance</button>
-                    <button className="filter-btn">Sports</button>
-                </div>
+                {/* Navigation */}
+                <nav className="terminal-nav">
+                    <Link to="/dashboard" className="term-link">System_Status</Link>
+                    <Link to="/claims" className="term-link">Verification_Logs</Link>
+                    <Link to="/leaderboard" className="term-link">Node_Rankings</Link>
+                    <Link to="/explore" className="term-link active">Network_Activity</Link>
+                    <Link to="/notifications" className="term-link">Sys_Alerts</Link>
+                </nav>
 
-                <div className="explore-grid">
-                    <div className="explore-card">
-                        <span className="explore-badge verified">Verified</span>
-                        <h3>AI in Healthcare</h3>
-                        <p>AI will revolutionize healthcare in the next decade</p>
-                        <div className="explore-meta">87% confidence • 234 views</div>
+                {/* Content */}
+                <div className="terminal-content">
+                    <h1 className="term-h1">GLOBAL_NETWORK_ACTIVITY</h1>
+
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+                        <input
+                            type="text"
+                            placeholder="grep 'search_term'"
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid var(--term-border)',
+                                color: 'var(--term-text)',
+                                padding: '0.5rem 1rem',
+                                fontFamily: 'var(--font-mono)',
+                                flex: 1
+                            }}
+                        />
+                        <button className="term-btn">EXECUTE_SEARCH</button>
                     </div>
 
-                    <div className="explore-card">
-                        <span className="explore-badge pending">Pending</span>
-                        <h3>Bitcoin Prediction</h3>
-                        <p>Bitcoin will reach $100k by Q1 2026</p>
-                        <div className="explore-meta">78% confidence • 89 views</div>
-                    </div>
-
-                    <div className="explore-card">
-                        <span className="explore-badge verified">Verified</span>
-                        <h3>Climate Action</h3>
-                        <p>Renewable energy will surpass fossil fuels by 2030</p>
-                        <div className="explore-meta">92% confidence • 512 views</div>
+                    <div className="term-grid">
+                        {loading ? (
+                            <div className="term-text">INITIALIZING_SCAN...</div>
+                        ) : (
+                            claims.map((claim) => (
+                                <div key={claim.id} className="term-card">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <span className="term-accent">PACKET #{claim.id}</span>
+                                        <span style={{
+                                            color: claim.status === 'Verified' ? 'var(--term-green)' : 'var(--term-yellow)'
+                                        }}>[{claim.status.toUpperCase()}]</span>
+                                    </div>
+                                    <h3 style={{ margin: '0 0 0.5rem 0' }}>{claim.title}</h3>
+                                    <p className="term-muted" style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>{claim.content}</p>
+                                    <div className="term-text" style={{ fontSize: '0.8rem' }}>
+                                        CONFIDENCE: {claim.confidence}% | VIEWS: {claim.views}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

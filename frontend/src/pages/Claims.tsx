@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import "./Dashboard.css";
-import "./Claims.css";
-import "./VotingStyles.css";
+import "../styles/TerminalStyles.css";
 
 const MOCK_CLAIMS = [
     {
@@ -14,7 +12,7 @@ const MOCK_CLAIMS = [
         confidence: 87,
         points: 150,
         views: 234,
-        date: "Nov 15, 2025",
+        date: "2025-11-15",
         upvotes: 45,
         downvotes: 12,
     },
@@ -26,7 +24,7 @@ const MOCK_CLAIMS = [
         confidence: 78,
         points: 0,
         views: 89,
-        date: "Nov 20, 2025",
+        date: "2025-11-20",
         upvotes: 23,
         downvotes: 8,
     },
@@ -38,26 +36,25 @@ const MOCK_CLAIMS = [
         confidence: 45,
         points: -50,
         views: 156,
-        date: "Nov 10, 2025",
+        date: "2025-11-10",
         upvotes: 12,
         downvotes: 34,
     },
 ];
 
 export default function Claims() {
-    const { canVote } = useAuth();
+    const { canVote, user } = useAuth();
     const [votes, setVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
 
     const handleVote = (claimId: string, voteType: 'up' | 'down') => {
         if (!canVote) {
-            alert("Connect your wallet to vote on claims");
+            alert("ACCESS_DENIED: Connect wallet to interact with protocol");
             return;
         }
 
         setVotes(prev => {
             const currentVote = prev[claimId];
             if (currentVote === voteType) {
-                // Remove vote if clicking same button
                 return { ...prev, [claimId]: null };
             }
             return { ...prev, [claimId]: voteType };
@@ -65,124 +62,82 @@ export default function Claims() {
     };
 
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link active">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link">
-                        Leaderboard
-                    </Link>
-                </div>
-            </nav>
-
-            <div className="dashboard-container">
-                <div className="claims-header">
-                    <h1>My Claims</h1>
-                    <Link to="/claims/submit" className="btn-submit">
-                        + Submit Claim
-                    </Link>
-                </div>
-
-                {!canVote && (
-                    <div style={{
-                        padding: '1rem',
-                        background: 'rgba(255, 193, 7, 0.1)',
-                        border: '2px solid rgba(255, 193, 7, 0.3)',
-                        borderRadius: '0.5rem',
-                        marginBottom: '1.5rem',
-                        textAlign: 'center',
-                    }}>
-                        <p style={{ margin: 0 }}>
-                            Connect your wallet to vote on claims and earn rewards
-                        </p>
+        <div className="terminal-page-container">
+            <div className="terminal-window crt">
+                {/* Window Header */}
+                <div className="terminal-header">
+                    <div className="terminal-controls">
+                        <span className="control close"></span>
+                        <span className="control minimize"></span>
+                        <span className="control maximize"></span>
                     </div>
-                )}
-
-                <div className="claims-filters">
-                    <button className="filter-btn active">All</button>
-                    <button className="filter-btn">Pending</button>
-                    <button className="filter-btn">Verified</button>
-                    <button className="filter-btn">Rejected</button>
+                    <div className="terminal-title">user@{user.displayName || 'guest'}:~/claims_db</div>
                 </div>
 
-                <div className="claims-list">
-                    {MOCK_CLAIMS.map((claim) => (
-                        <div key={claim.id} className={`claim-card status-${claim.status}`}>
-                            <div className="claim-header">
-                                <span className={`claim-status ${claim.status}`}>
-                                    {claim.status === "verified" && "VERIFIED"}
-                                    {claim.status === "pending" && "PENDING"}
-                                    {claim.status === "rejected" && "REJECTED"}
-                                </span>
-                                <span className="claim-id">#{claim.id}</span>
-                                <span className="claim-category">{claim.category}</span>
-                            </div>
+                {/* Navigation */}
+                <nav className="terminal-nav">
+                    <Link to="/dashboard" className="term-link">System_Status</Link>
+                    <Link to="/claims" className="term-link active">Verification_Logs</Link>
+                    <Link to="/leaderboard" className="term-link">Node_Rankings</Link>
+                    <Link to="/explore" className="term-link">Network_Activity</Link>
+                    <Link to="/notifications" className="term-link">Sys_Alerts</Link>
+                </nav>
 
-                            <p className="claim-statement">{claim.statement}</p>
+                {/* Content */}
+                <div className="terminal-content">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                        <h1 className="term-h1" style={{ marginBottom: 0 }}>DATABASE_QUERY: SELECT * FROM CLAIMS</h1>
+                        <Link to="/claims/submit">
+                            <button className="term-btn">INSERT_NEW_RECORD</button>
+                        </Link>
+                    </div>
 
-                            <div className="claim-meta">
-                                {claim.status === "verified" && (
-                                    <span>Confidence: {claim.confidence}%</span>
-                                )}
-                                {claim.status === "pending" && (
-                                    <span>Processing... {claim.confidence}% complete</span>
-                                )}
-                                {claim.status === "rejected" && (
-                                    <span>Insufficient evidence</span>
-                                )}
-                                <span>•</span>
-                                <span>
-                                    {claim.points > 0 ? "+" : ""}
-                                    {claim.points} pts
-                                </span>
-                                <span>•</span>
-                                <span>{claim.views} views</span>
-                                <span>•</span>
-                                <span>{claim.date}</span>
-                            </div>
+                    <div className="term-grid" style={{ gap: '1rem' }}>
+                        {MOCK_CLAIMS.map((claim) => (
+                            <div key={claim.id} className="term-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div>
+                                        <span className="term-muted">ID:</span> <span className="term-accent">#{claim.id}</span>
+                                        <span className="term-muted" style={{ marginLeft: '1rem' }}>TIMESTAMP:</span> {claim.date}
+                                    </div>
+                                    <div style={{
+                                        color: claim.status === 'verified' ? 'var(--term-green)' :
+                                            claim.status === 'rejected' ? 'var(--term-red)' : 'var(--term-yellow)',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        [{claim.status.toUpperCase()}]
+                                    </div>
+                                </div>
 
-                            {/* Voting Section */}
-                            <div className="claim-voting">
-                                <button
-                                    className={`vote-btn upvote ${votes[claim.id] === 'up' ? 'active' : ''} ${!canVote ? 'disabled' : ''}`}
-                                    onClick={() => handleVote(claim.id, 'up')}
-                                    disabled={!canVote}
-                                    title={!canVote ? "Connect wallet to vote" : "Upvote this claim"}
-                                >
-                                    ▲ {claim.upvotes + (votes[claim.id] === 'up' ? 1 : 0)}
-                                </button>
-                                <button
-                                    className={`vote-btn downvote ${votes[claim.id] === 'down' ? 'active' : ''} ${!canVote ? 'disabled' : ''}`}
-                                    onClick={() => handleVote(claim.id, 'down')}
-                                    disabled={!canVote}
-                                    title={!canVote ? "Connect wallet to vote" : "Downvote this claim"}
-                                >
-                                    ▼ {claim.downvotes + (votes[claim.id] === 'down' ? 1 : 0)}
-                                </button>
-                            </div>
+                                <div style={{ fontSize: '1.2rem', margin: '0.5rem 0' }}>
+                                    {claim.statement}
+                                </div>
 
-                            <div className="claim-actions">
-                                <button className="btn-action">View Details</button>
-                                {claim.status === "verified" && (
-                                    <button className="btn-action">Share</button>
-                                )}
-                                {claim.status === "pending" && (
-                                    <button className="btn-action">View Progress</button>
-                                )}
-                                {claim.status === "rejected" && (
-                                    <button className="btn-action">Resubmit</button>
-                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                                    <div className="term-muted" style={{ fontSize: '0.9rem' }}>
+                                        CATEGORY: {claim.category} | CONFIDENCE: {claim.confidence}%
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '1rem' }}>
+                                        <button
+                                            className="term-btn"
+                                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', opacity: votes[claim.id] === 'up' ? 1 : 0.5 }}
+                                            onClick={() => handleVote(claim.id, 'up')}
+                                        >
+                                            ▲ {claim.upvotes + (votes[claim.id] === 'up' ? 1 : 0)}
+                                        </button>
+                                        <button
+                                            className="term-btn"
+                                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', opacity: votes[claim.id] === 'down' ? 1 : 0.5, borderColor: 'var(--term-red)', color: 'var(--term-red)' }}
+                                            onClick={() => handleVote(claim.id, 'down')}
+                                        >
+                                            ▼ {claim.downvotes + (votes[claim.id] === 'down' ? 1 : 0)}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

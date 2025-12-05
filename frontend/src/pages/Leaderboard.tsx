@@ -1,88 +1,96 @@
 import { Link } from "react-router-dom";
-import "./Dashboard.css";
-import "./Leaderboard.css";
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import "../styles/TerminalStyles.css";
 
-const MOCK_LEADERBOARD = [
-    { rank: 1, name: "Abinav", points: 3890, accuracy: 95, change: 2 },
-    { rank: 2, name: "Shirrish", points: 2345, accuracy: 92, change: -1 },
-    { rank: 3, name: "Ashrith", points: 2100, accuracy: 89, change: 1 },
-    { rank: 4, name: "David", points: 1890, accuracy: 88, change: 3 },
-    { rank: 5, name: "Eve", points: 1750, accuracy: 91, change: -1 },
-    { rank: 43, name: "You", points: 1247, accuracy: 89, change: 5, isCurrentUser: true },
-];
+interface LeaderboardUser {
+    rank: number;
+    name: string;
+    points: number;
+    accuracy: number;
+    change: number;
+    isCurrentUser?: boolean;
+}
 
 export default function Leaderboard() {
+    const { user } = useAuth();
+    const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('http://localhost:3000/api/user/leaderboard')
+            .then(res => res.json())
+            .then(data => {
+                setLeaderboard(data);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("Failed to fetch leaderboard:", err);
+                setLoading(false);
+            });
+    }, []);
+
     return (
-        <div className="dashboard-page">
-            <nav className="dashboard-nav">
-                <Link to="/" className="nav-logo">
-                    VeriChain
-                </Link>
-                <div className="nav-links">
-                    <Link to="/dashboard" className="nav-link">
-                        Dashboard
-                    </Link>
-                    <Link to="/claims" className="nav-link">
-                        Claims
-                    </Link>
-                    <Link to="/leaderboard" className="nav-link active">
-                        Leaderboard
-                    </Link>
-                </div>
-            </nav>
-
-            <div className="dashboard-container">
-                <h1 className="leaderboard-title">Top Truth Seekers</h1>
-
-                <div className="leaderboard-filters">
-                    <button className="filter-btn active">All Time</button>
-                    <button className="filter-btn">This Month</button>
-                    <button className="filter-btn">This Week</button>
+        <div className="terminal-page-container">
+            <div className="terminal-window crt">
+                {/* Window Header */}
+                <div className="terminal-header">
+                    <div className="terminal-controls">
+                        <span className="control close"></span>
+                        <span className="control minimize"></span>
+                        <span className="control maximize"></span>
+                    </div>
+                    <div className="terminal-title">user@{user.displayName || 'guest'}:~/node_rankings</div>
                 </div>
 
-                <div className="podium">
-                    <div className="podium-place second">
-                        <div className="podium-avatar">S</div>
-                        <div className="podium-name">Shirrish</div>
-                        <div className="podium-points">2,345</div>
-                    </div>
-                    <div className="podium-place first">
-                        <div className="podium-avatar">A</div>
-                        <div className="podium-name">Abinav</div>
-                        <div className="podium-points">3,890</div>
-                    </div>
-                    <div className="podium-place third">
-                        <div className="podium-avatar">A</div>
-                        <div className="podium-name">Ashrith</div>
-                        <div className="podium-points">2,100</div>
-                    </div>
-                </div>
+                {/* Navigation */}
+                <nav className="terminal-nav">
+                    <Link to="/dashboard" className="term-link">System_Status</Link>
+                    <Link to="/claims" className="term-link">Verification_Logs</Link>
+                    <Link to="/leaderboard" className="term-link active">Node_Rankings</Link>
+                    <Link to="/explore" className="term-link">Network_Activity</Link>
+                    <Link to="/notifications" className="term-link">Sys_Alerts</Link>
+                </nav>
 
-                <div className="leaderboard-list">
-                    {MOCK_LEADERBOARD.map((user) => (
-                        <div
-                            key={user.rank}
-                            className={`leaderboard-card ${user.isCurrentUser ? "current-user" : ""}`}
-                        >
-                            <div className="rank-number">#{user.rank}</div>
-                            <div className="user-avatar">{user.name.charAt(0)}</div>
-                            <div className="user-details">
-                                <div className="user-name">{user.name}</div>
-                                <div className="user-stats">
-                                    {user.accuracy}% accuracy • {user.points.toLocaleString()} points
-                                </div>
-                            </div>
-                            <div className="rank-change">
-                                {user.change > 0 && (
-                                    <span className="change-up">↑ +{user.change}</span>
-                                )}
-                                {user.change < 0 && (
-                                    <span className="change-down">↓ {user.change}</span>
-                                )}
-                                {user.change === 0 && <span className="change-same">—</span>}
-                            </div>
+                {/* Content */}
+                <div className="terminal-content">
+                    <h1 className="term-h1">TOP_PERFORMING_NODES</h1>
+
+                    {loading ? (
+                        <div className="term-text">CALCULATING_METRICS...</div>
+                    ) : (
+                        <div className="term-card" style={{ padding: 0 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--term-border)' }}>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>RANK</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>NODE_ID</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>REPUTATION</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>ACCURACY</th>
+                                        <th style={{ padding: '1rem', color: 'var(--term-gray)' }}>TREND</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {leaderboard.map((user) => (
+                                        <tr key={user.rank} style={{
+                                            borderBottom: '1px dashed var(--term-border)',
+                                            background: user.isCurrentUser ? 'rgba(138, 226, 52, 0.1)' : 'transparent'
+                                        }}>
+                                            <td style={{ padding: '1rem', fontFamily: 'monospace', fontWeight: 'bold' }}>#{user.rank}</td>
+                                            <td style={{ padding: '1rem', color: user.isCurrentUser ? 'var(--term-green)' : 'inherit' }}>
+                                                {user.name} {user.isCurrentUser && '(YOU)'}
+                                            </td>
+                                            <td style={{ padding: '1rem' }}>{user.points.toLocaleString()}</td>
+                                            <td style={{ padding: '1rem' }}>{user.accuracy}%</td>
+                                            <td style={{ padding: '1rem', color: user.change > 0 ? 'var(--term-green)' : user.change < 0 ? 'var(--term-red)' : 'var(--term-gray)' }}>
+                                                {user.change > 0 ? `+${user.change}` : user.change}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
         </div>

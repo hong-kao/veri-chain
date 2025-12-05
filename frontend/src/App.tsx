@@ -1,26 +1,51 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+// Pages
 import Home from "./pages/Home";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
-import Dashboard from "./pages/Dashboard";
-import Claims from "./pages/Claims";
-import ClaimsSubmit from "./pages/ClaimsSubmit";
-import Leaderboard from "./pages/Leaderboard";
-import Notifications from "./pages/Notifications";
-import Explore from "./pages/Explore";
+import Profile from "./pages/Profile";
+import ViewClaims from "./pages/ViewClaims";
+import SubmitClaim from "./pages/SubmitClaim";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/onboarding" element={<Onboarding />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/claims" element={<Claims />} />
-      <Route path="/claims/submit" element={<ClaimsSubmit />} />
-      <Route path="/leaderboard" element={<Leaderboard />} />
-      <Route path="/notifications" element={<Notifications />} />
-      <Route path="/explore" element={<Explore />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/auth" element={<Auth />} />
+
+        {/* Onboarding */}
+        <Route path="/onboarding" element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
+        } />
+
+        {/* Main App Routes */}
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        } />
+        <Route path="/claims" element={
+          <ProtectedRoute>
+            <ViewClaims />
+          </ProtectedRoute>
+        } />
+        <Route path="/submit" element={
+          <ProtectedRoute>
+            <SubmitClaim />
+          </ProtectedRoute>
+        } />
+
+        {/* Redirects for old routes */}
+        <Route path="/dashboard" element={<Navigate to="/profile" replace />} />
+        <Route path="/claims/submit" element={<Navigate to="/submit" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }

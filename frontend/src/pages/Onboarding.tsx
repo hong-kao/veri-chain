@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import "./Onboarding.css";
 
 const CATEGORIES = [
-    { id: "science", label: "Science" },
-    { id: "technology", label: "Technology" },
+    { id: "politics", label: "Politics" },
+    { id: "health", label: "Health" },
     { id: "finance", label: "Finance" },
-    { id: "healthcare", label: "Healthcare" },
+    { id: "tech", label: "Tech" },
     { id: "sports", label: "Sports" },
-    { id: "arts", label: "Arts" },
+    { id: "misc", label: "Miscellaneous" },
 ];
 
 export default function Onboarding() {
     const navigate = useNavigate();
-    const { authType, walletAddress, oauthUser } = useAuth();
+    const { authType, walletAddress, oauthUser, email: authEmail, token, updateProfile, user } = useAuth();
 
     const [currentSlide, setCurrentSlide] = useState(0);
     const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
@@ -24,19 +25,37 @@ export default function Onboarding() {
         weeklyDigest: false,
         newAchievements: true,
     });
+
+    // Auto-fill display name from email registration or OAuth
+    const getInitialDisplayName = () => {
+        if (authType === 'email' && user?.displayName && user.displayName !== 'Guest') {
+            return user.displayName;
+        }
+        if (authType === 'oauth' && oauthUser?.name) {
+            return oauthUser.name;
+        }
+        return '';
+    };
+
     const [profile, setProfile] = useState({
-        displayName: "",
-        bio: "",
-        reddit: "",
-        twitter: "",
-        email: "", // Add email for wallet users
+        displayName: getInitialDisplayName(),
+        email: authEmail || (authType === 'oauth' ? oauthUser?.email : '') || '',
+        reddit: '',
+        twitter: '',
+        farcaster: '',
     });
     const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState("");
+    const [error, setError] = useState('');
 
     const handleNext = async () => {
         if (currentSlide === 1 && selectedInterests.length < 3) {
             alert("Please select at least 3 interests");
+            return;
+        }
+
+        // Validate email on final step
+        if (currentSlide === 3 && !profile.email.trim()) {
+            alert("Email is required");
             return;
         }
 
@@ -50,63 +69,60 @@ export default function Onboarding() {
 
     const handleSubmitOnboarding = async () => {
         setSubmitting(true);
-        setError("");
-
-        const onboardingData = {
-            authType,
-            walletAddress: authType === 'wallet' ? walletAddress : undefined,
-            email: authType === 'oauth' ? oauthUser?.email : profile.email,
-            name: oauthUser?.name || profile.displayName,
-            displayName: profile.displayName || oauthUser?.name || "User",
-            bio: profile.bio,
-            redditHandle: profile.reddit,
-            xHandle: profile.twitter,
-            interests: selectedInterests,
-            notifications,
-            onboardingComplete: true,
-        };
+        setError('');
 
         try {
-            // Send POST request to backend auth service
-            const response = await fetch('http://localhost:8080/api/auth/signup', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(onboardingData),
+            // For email auth, walletAddress is optional
+            if (authType === 'wallet' && !walletAddress) {
+                throw new Error('Wallet address is required. Please connect your wallet.');
+            }
+
+            // Map notification preferences to NotifType enum
+            const getNotifType = () => {
+                const { claimStatus, leaderboardChanges, weeklyDigest } = notifications;
+                if (!claimStatus && !leaderboardChanges && !weeklyDigest) return 'none';
+                if (claimStatus && !leaderboardChanges && !weeklyDigest) return 'important_only';
+                if (weeklyDigest) return 'frequent';
+                return 'standard';
+            };
+
+            // Call backend signup endpoint with schema-matching data
+            const response = await api.signup({
+                authType: authType || 'wallet',
+                walletAddress: walletAddress || undefined,
+                email: profile.email || authEmail || (authType === 'oauth' ? oauthUser?.email : undefined),
+                name: profile.displayName || oauthUser?.name || 'User',
+                displayName: profile.displayName || oauthUser?.name || 'User',
+                redditHandle: profile.reddit || undefined,
+                xHandle: profile.twitter || undefined,
+                farcasterHandle: profile.farcaster || undefined,
+                interests: selectedInterests,
+                notifType: getNotifType(),
             });
 
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}`);
-            }
+            console.log('Onboarding submitted successfully:', response);
 
-            const result = await response.json();
-            console.log('Onboarding submitted successfully:', result);
+            // Save to sessionStorage for redundancy
+            const onboardingData = {
+                authType,
+                walletAddress,
+                email: profile.email || (authType === 'oauth' ? oauthUser?.email : undefined),
+                displayName: profile.displayName,
+                interests: selectedInterests,
+                notifications,
+                onboardingComplete: true,
+            };
 
-            // Save token to localStorage
-            if (result.token) {
-                localStorage.setItem('verichain-token', result.token);
-            }
+            sessionStorage.setItem("claims-user-profile", JSON.stringify(onboardingData));
 
-            // Save to localStorage
-            localStorage.setItem(
-                "claims-user-profile",
-                JSON.stringify(onboardingData)
-            );
+            // Update the auth context to refresh user displayName
+            updateProfile();
 
-            navigate("/dashboard");
+            // Navigate to profile
+            navigate("/profile");
         } catch (err: any) {
             console.error('Failed to submit onboarding:', err);
-            setError(err.message || 'Failed to submit. Continuing anyway...');
-
-            // Save locally even if backend fails
-            localStorage.setItem(
-                "claims-user-profile",
-                JSON.stringify(onboardingData)
-            );
-
-            // Navigate after 2 seconds even on error
-            setTimeout(() => navigate("/dashboard"), 2000);
+            setError(err.response?.data?.error || err.message || 'Failed to submit. Please try again.');
         } finally {
             setSubmitting(false);
         }
@@ -145,61 +161,49 @@ export default function Onboarding() {
         <div className="onboarding-page">
             <div className="onboarding-container">
                 <div className="onboarding-header">
-                    <button className="skip-button" onClick={handleSkip}>
-                        Skip
-                    </button>
+                    <div className="logo-small">VeriChain</div>
                 </div>
 
-                <div className="progress-dots">
-                    {[0, 1, 2, 3].map((i) => (
+                <div className="progress-bar-container">
+                    <div className="progress-track">
                         <div
-                            key={i}
-                            className={`progress-dot ${i === currentSlide ? "active" : ""} ${i < currentSlide ? "completed" : ""
-                                }`}
-                        />
-                    ))}
+                            className="progress-fill"
+                            style={{ width: `${((currentSlide + 1) / 4) * 100}%` }}
+                        ></div>
+                    </div>
                 </div>
 
                 {error && (
-                    <div style={{
-                        padding: '1rem',
-                        background: 'rgba(244, 63, 94, 0.1)',
-                        border: '1px solid rgba(244, 63, 94, 0.3)',
-                        borderRadius: '0.5rem',
-                        color: '#f43f5e',
-                        marginBottom: '1rem',
-                    }}>
+                    <div className="error-banner">
                         {error}
                     </div>
                 )}
 
                 <div className="slides-container">
                     {currentSlide === 0 && (
-                        <div className="slide">
-                            <h1>Welcome to VeriChain!</h1>
-                            <p>Let's personalize your experience in just a few quick steps.</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Welcome to VeriChain</h1>
+                            <p className="slide-subtitle">Let's personalize your experience in just a few quick steps.</p>
                             <div className="welcome-animation">
-                                <div className="welcome-icon">✓</div>
+                                <div className="welcome-circle">
+                                    <span className="welcome-icon">✓</span>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {currentSlide === 1 && (
-                        <div className="slide">
-                            <h1>What topics interest you?</h1>
-                            <p>Select at least 3 topics</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">What interests you?</h1>
+                            <p className="slide-subtitle">Select at least 3 topics to customize your feed</p>
                             <div className="interests-grid">
                                 {CATEGORIES.map((category) => (
                                     <button
                                         key={category.id}
-                                        className={`interest-card ${selectedInterests.includes(category.id) ? "selected" : ""
-                                            }`}
+                                        className={`interest-card ${selectedInterests.includes(category.id) ? "selected" : ""}`}
                                         onClick={() => toggleInterest(category.id)}
                                     >
                                         <span className="interest-label">{category.label}</span>
-                                        {selectedInterests.includes(category.id) && (
-                                            <span className="checkmark">✓</span>
-                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -207,148 +211,121 @@ export default function Onboarding() {
                     )}
 
                     {currentSlide === 2 && (
-                        <div className="slide">
-                            <h1>Stay informed, your way</h1>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Stay informed</h1>
+                            <p className="slide-subtitle">Choose how you want to be notified</p>
                             <div className="notifications-list">
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Claim status updates</div>
-                                        <div className="notification-desc">
-                                            Get notified when your claims are verified
-                                        </div>
+                                        <div className="notification-desc">Get notified when your claims are verified</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.claimStatus}
-                                        onChange={(e) =>
-                                            setNotifications({ ...notifications, claimStatus: e.target.checked })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.claimStatus}
+                                            onChange={(e) => setNotifications({ ...notifications, claimStatus: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </div>
                                 </label>
 
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Leaderboard changes</div>
-                                        <div className="notification-desc">
-                                            Know when your rank changes
-                                        </div>
+                                        <div className="notification-desc">Know when your rank changes</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.leaderboardChanges}
-                                        onChange={(e) =>
-                                            setNotifications({
-                                                ...notifications,
-                                                leaderboardChanges: e.target.checked,
-                                            })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.leaderboardChanges}
+                                            onChange={(e) => setNotifications({ ...notifications, leaderboardChanges: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
+                                    </div>
                                 </label>
 
                                 <label className="notification-item">
-                                    <div>
+                                    <div className="notif-info">
                                         <div className="notification-title">Weekly digest</div>
-                                        <div className="notification-desc">
-                                            Summary of your activity
-                                        </div>
+                                        <div className="notification-desc">Summary of your activity</div>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.weeklyDigest}
-                                        onChange={(e) =>
-                                            setNotifications({ ...notifications, weeklyDigest: e.target.checked })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
-                                </label>
-
-                                <label className="notification-item">
-                                    <div>
-                                        <div className="notification-title">New achievements</div>
-                                        <div className="notification-desc">
-                                            Celebrate your milestones
-                                        </div>
+                                    <div className="toggle-wrapper">
+                                        <input
+                                            type="checkbox"
+                                            checked={notifications.weeklyDigest}
+                                            onChange={(e) => setNotifications({ ...notifications, weeklyDigest: e.target.checked })}
+                                        />
+                                        <span className="toggle-slider"></span>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={notifications.newAchievements}
-                                        onChange={(e) =>
-                                            setNotifications({
-                                                ...notifications,
-                                                newAchievements: e.target.checked,
-                                            })
-                                        }
-                                    />
-                                    <span className="toggle-slider"></span>
                                 </label>
                             </div>
-                            <p className="settings-note">
-                                You can change these anytime in settings
-                            </p>
                         </div>
                     )}
 
                     {currentSlide === 3 && (
-                        <div className="slide">
-                            <h1>Make your profile stand out</h1>
-                            <p>Optional - you can skip this step</p>
+                        <div className="slide fade-in">
+                            <h1 className="slide-title">Complete Profile</h1>
+                            <p className="slide-subtitle">Tell us a bit about yourself</p>
                             <div className="profile-form">
                                 <div className="form-group">
-                                    <label>Display Name</label>
+                                    <label>Display Name{authType === 'email' && profile.displayName ? ' (from registration)' : ''}</label>
                                     <input
                                         type="text"
                                         placeholder="Enter your name"
                                         value={profile.displayName}
-                                        onChange={(e) =>
-                                            setProfile({ ...profile, displayName: e.target.value })
-                                        }
+                                        onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
+                                        className="premium-input"
+                                        disabled={authType === 'email' && !!getInitialDisplayName()}
                                     />
                                 </div>
 
-                                {authType === 'wallet' && (
-                                    <div className="form-group">
-                                        <label>Email Address</label>
-                                        <input
-                                            type="email"
-                                            placeholder="your.email@example.com"
-                                            value={profile.email}
-                                            onChange={(e) =>
-                                                setProfile({ ...profile, email: e.target.value })
-                                            }
-                                        />
-                                    </div>
-                                )}
-
                                 <div className="form-group">
-                                    <label>Bio (150 chars)</label>
-                                    <textarea
-                                        placeholder="Tell us about yourself"
-                                        maxLength={150}
-                                        value={profile.bio}
-                                        onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                                    <label>
+                                        Email
+                                        {(authType === 'oauth' || authType === 'email') && profile.email ? ' (from your account)' : ' *'}
+                                    </label>
+                                    <input
+                                        type="email"
+                                        placeholder="your@email.com"
+                                        value={profile.email}
+                                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                                        className="premium-input"
+                                        disabled={(authType === 'oauth' || authType === 'email') && !!profile.email}
+                                        required
                                     />
-                                    <div className="char-count">{profile.bio.length}/150</div>
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Reddit Account (Optional)</label>
+                                    <label>Reddit Profile (Optional)</label>
                                     <input
                                         type="text"
                                         placeholder="u/username"
                                         value={profile.reddit}
                                         onChange={(e) => setProfile({ ...profile, reddit: e.target.value })}
+                                        className="premium-input"
                                     />
                                 </div>
 
                                 <div className="form-group">
-                                    <label>X (Twitter) Account (Optional)</label>
+                                    <label>X/Twitter Profile (Optional)</label>
                                     <input
                                         type="text"
                                         placeholder="@username"
                                         value={profile.twitter}
                                         onChange={(e) => setProfile({ ...profile, twitter: e.target.value })}
+                                        className="premium-input"
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Farcaster Profile (Optional)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="@username"
+                                        value={profile.farcaster}
+                                        onChange={(e) => setProfile({ ...profile, farcaster: e.target.value })}
+                                        className="premium-input"
                                     />
                                 </div>
                             </div>
@@ -359,11 +336,11 @@ export default function Onboarding() {
                 <div className="onboarding-actions">
                     {currentSlide > 0 && (
                         <button className="btn-back" onClick={handleBack} disabled={submitting}>
-                            ← Back
+                            Back
                         </button>
                     )}
                     <button className="btn-next" onClick={handleNext} disabled={submitting}>
-                        {submitting ? "SUBMITTING..." : (currentSlide === 3 ? "Enter Platform →" : "Next →")}
+                        {submitting ? "Submitting..." : (currentSlide === 3 ? "Complete Setup" : "Continue")}
                     </button>
                 </div>
             </div>

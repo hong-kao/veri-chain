@@ -1,0 +1,113 @@
+.app-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 3rem;
+    background: #000000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.app-nav-logo {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    text-decoration: none;
+    font-family: var(--font-source-code), 'Source Code Pro', monospace;
+    letter-spacing: -0.02em;
+}
+
+.app-nav-logo:hover {
+    opacity: 0.8;
+}
+
+.app-nav-links {
+    display: flex;
+    gap: 2.5rem;
+}
+
+.app-nav-link {
+    color: rgba(255, 255, 255, 0.5);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 500;
+    font-family: var(--font-source-code), 'Source Code Pro', monospace;
+    transition: all 0.2s ease;
+    padding: 0.5rem 0;
+    position: relative;
+}
+
+.app-nav-link:hover {
+    color: #ffffff;
+}
+
+.app-nav-link.active {
+    color: #ffffff;
+}
+
+.app-nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #ffffff;
+}
+
+.app-nav-user {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.app-nav-username {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    font-family: var(--font-source-code), 'Source Code Pro', monospace;
+}
+
+.app-nav-logout {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: var(--font-source-code), 'Source Code Pro', monospace;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 0;
+}
+
+.app-nav-logout:hover {
+    background: #ffffff;
+    color: #000000;
+    border-color: #ffffff;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .app-nav {
+        padding: 1rem 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .app-nav-links {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+        gap: 1.5rem;
+    }
+
+    .app-nav-link {
+        font-size: 0.85rem;
+    }
+
+    .app-nav-username {
+        display: none;
+    }
+}

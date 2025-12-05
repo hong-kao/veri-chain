@@ -39,6 +39,8 @@ app.get("/", (req, res) => {
       claimStatus: "GET /api/claims/:claimId/status",
       claimDetails: "GET /api/claims/:claimId",
       // Auth endpoints
+      register: "POST /api/auth/register",
+      login: "POST /api/auth/login",
       signup: "POST /api/auth/signup",
       getProfile: "GET /api/auth/me",
       verifyWallet: "POST /api/auth/verify-wallet",

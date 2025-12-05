@@ -1,7 +1,6 @@
 import { ClaimMetadata, AgentOutputs } from './scoringAgent.js';
 import { RoutingInput, RouteDecision, RoutingDecision, VoterCohort } from './communityRoutingAgent.js';
 import { PrismaClient, ClaimStatus, VerdictType, AgentType, VotingStatus, NotifChannelType, NotifStatus, OnchainEventType, Prisma, ClaimType, PlatformType } from '../generated/prisma/index.js';
-import prisma from '../config/db.config.js';
 import { ethers } from 'ethers';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '../utils/email.js';
@@ -61,11 +60,13 @@ export class ResultOrchestrator {
   private verificationMarketContract: ethers.Contract;
   private reputationContract: ethers.Contract;
   private verifierBadgeContract: ethers.Contract;
+  private prisma: PrismaClient;
 
   constructor(
     rpcUrl: string,
     privateKey: string
   ) {
+    this.prisma = new PrismaClient();
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.signer = new ethers.Wallet(privateKey, this.provider);
 

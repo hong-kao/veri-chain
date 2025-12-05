@@ -2,8 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { env } from '../config/env.config.js';
+import prisma from '../config/db.config.js';
 
-const prisma = new PrismaClient();
 const JWT_SECRET = env.JWT_SECRET || 'verichain-secret-fallback';
 
 // Extend Express Request to include user
@@ -12,7 +12,7 @@ declare global {
         interface Request {
             user?: {
                 id: number;
-                walletAddress: string;
+                walletAddress?: string | null;
                 email?: string | null;
                 fullName?: string | null;
             };
@@ -21,7 +21,8 @@ declare global {
 }
 
 /**
- * Auth Middleware - Verifies JWT token and attaches user to requestUse this to protect routes that require authentication
+ * Auth Middleware - Verifies JWT token and attaches user to request
+ * Use this to protect routes that require authentication
  */
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -131,3 +132,4 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
 };
 
 export default { requireAuth, optionalAuth };
+

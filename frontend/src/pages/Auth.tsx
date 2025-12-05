@@ -1,31 +1,118 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { FcGoogle } from "react-icons/fc";
+
 import "./Auth.css";
+
+// Password validation function
+const validatePassword = (password: string): { valid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    if (password.length < 8) {
+        errors.push("At least 8 characters");
+    }
+    if (!/[A-Z]/.test(password)) {
+        errors.push("1 uppercase letter");
+    }
+    if (!/[a-z]/.test(password)) {
+        errors.push("1 lowercase letter");
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+        errors.push("1 special character");
+    }
+
+    return { valid: errors.length === 0, errors };
+};
 
 export default function Auth() {
     const navigate = useNavigate();
-    const { connectWallet, loginWithOAuth } = useAuth();
+    const { connectWallet, loginWithOAuth, loginWithEmail, registerWithEmail } = useAuth();
+
+    const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+
+    // Login form state
+    const [loginEmail, setLoginEmail] = useState("");
+    const [loginPassword, setLoginPassword] = useState("");
+
+    // Signup form state
+    const [signupFullName, setSignupFullName] = useState("");
+    const [signupEmail, setSignupEmail] = useState("");
+    const [signupPassword, setSignupPassword] = useState("");
+    const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+
+    // Password validation state
+    const passwordValidation = validatePassword(signupPassword);
+    const passwordsMatch = signupPassword === signupConfirmPassword;
+
+    // Form validation
+    const isLoginFormValid = loginEmail.trim() !== '' && loginPassword.trim() !== '';
+    const isSignupFormValid = signupFullName.trim() !== '' && signupEmail.trim() !== '' && passwordValidation.valid && passwordsMatch;
 
     const handleWalletConnect = async () => {
         setLoading(true);
         setError("");
 
         try {
+            console.log('🔗 Auth page: Initiating wallet connection...');
             await connectWallet();
+            console.log('✅ Wallet connected successfully');
+            navigate("/onboarding");
+        } catch (err: any) {
+            console.error('❌ Wallet connection error:', err);
+            setError(err.message || "Failed to connect wallet. Please try again.");
+            setLoading(false);
+        }
+    };
 
-            // Check if first time user
-            const isFirstTime = !localStorage.getItem("claims-user-profile");
+    const handleEmailLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
 
-            if (isFirstTime) {
+        try {
+            const { needsOnboarding } = await loginWithEmail(loginEmail, loginPassword);
+
+            if (needsOnboarding) {
                 navigate("/onboarding");
             } else {
                 navigate("/dashboard");
             }
         } catch (err: any) {
-            setError(err.message || "Failed to connect wallet. Please try again.");
+            console.error('❌ Login error:', err);
+            setError(err.response?.data?.error || err.message || "Failed to login. Please try again.");
+            setLoading(false);
+        }
+    };
+
+    const handleEmailSignup = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+
+        // Validate password
+        if (!passwordValidation.valid) {
+            setError("Password does not meet requirements");
+            setLoading(false);
+            return;
+        }
+
+        // Check passwords match
+        if (!passwordsMatch) {
+            setError("Passwords do not match");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            await registerWithEmail(signupFullName, signupEmail, signupPassword, signupConfirmPassword);
+            navigate("/onboarding");
+        } catch (err: any) {
+            console.error('❌ Signup error:', err);
+            setError(err.response?.data?.error || err.message || "Failed to sign up. Please try again.");
             setLoading(false);
         }
     };
@@ -40,7 +127,6 @@ export default function Auth() {
                 </a>
                 <div className="auth-nav-links">
                     <a href="/">Home</a>
-                    <a href="/dashboard">Dashboard</a>
                 </div>
             </nav>
 
@@ -51,9 +137,173 @@ export default function Auth() {
                 </div>
 
                 <div className="auth-modal">
-                    <h2 className="auth-title">Connect Wallet</h2>
+                    {/* Tab Navigation */}
+                    <div className="auth-tabs">
+                        <button
+                            className={`auth-tab ${activeTab === 'login' ? 'active' : ''}`}
+                            onClick={() => { setActiveTab('login'); setError(''); }}
+                        >
+                            Log In
+                        </button>
+                        <button
+                            className={`auth-tab ${activeTab === 'signup' ? 'active' : ''}`}
+                            onClick={() => { setActiveTab('signup'); setError(''); }}
+                        >
+                            Sign Up
+                        </button>
+                    </div>
 
                     {error && <div className="auth-error">{error}</div>}
+
+                    {/* Login Form */}
+                    {activeTab === 'login' && (
+                        <form className="auth-form" onSubmit={handleEmailLogin}>
+                            <div className="auth-form-group">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    className="auth-input"
+                                    placeholder="Enter your email"
+                                    value={loginEmail}
+                                    onChange={(e) => setLoginEmail(e.target.value)}
+                                    required
+                                    disabled={loading}
+                                />
+                            </div>
+
+                            <div className="auth-form-group">
+                                <label>Password</label>
+                                <div className="password-input-wrapper">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        className="auth-input"
+                                        placeholder="Enter your password"
+                                        value={loginPassword}
+                                        onChange={(e) => setLoginPassword(e.target.value)}
+                                        required
+                                        disabled={loading}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="password-toggle"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? '👁️' : '👁️‍🗨️'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                className="auth-btn-primary"
+                                disabled={loading || !isLoginFormValid}
+                            >
+                                {loading ? "LOGGING IN..." : "LOG IN"}
+                            </button>
+                        </form>
+                    )}
+
+                    {/* Signup Form */}
+                    {activeTab === 'signup' && (
+                        <form className="auth-form" onSubmit={handleEmailSignup}>
+                            <div className="auth-form-group">
+                                <label>Full Name</label>
+                                <input
+                                    type="text"
+                                    className="auth-input"
+                                    placeholder="Enter your full name"
+                                    value={signupFullName}
+                                    onChange={(e) => setSignupFullName(e.target.value)}
+                                    required
+                                    disabled={loading}
+                                />
+                            </div>
+
+                            <div className="auth-form-group">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    className="auth-input"
+                                    placeholder="Enter your email"
+                                    value={signupEmail}
+                                    onChange={(e) => setSignupEmail(e.target.value)}
+                                    required
+                                    disabled={loading}
+                                />
+                            </div>
+
+                            <div className="auth-form-group">
+                                <label>Password</label>
+                                <div className="password-input-wrapper">
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        className="auth-input"
+                                        placeholder="Create a password"
+                                        value={signupPassword}
+                                        onChange={(e) => setSignupPassword(e.target.value)}
+                                        required
+                                        disabled={loading}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="password-toggle"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? '👁️' : '👁️‍🗨️'}
+                                    </button>
+                                </div>
+
+                                {/* Password Requirements */}
+                                {signupPassword && (
+                                    <div className="password-requirements">
+                                        <div className={`requirement ${signupPassword.length >= 8 ? 'met' : ''}`}>
+                                            ✓ At least 8 characters
+                                        </div>
+                                        <div className={`requirement ${/[A-Z]/.test(signupPassword) ? 'met' : ''}`}>
+                                            ✓ 1 uppercase letter
+                                        </div>
+                                        <div className={`requirement ${/[a-z]/.test(signupPassword) ? 'met' : ''}`}>
+                                            ✓ 1 lowercase letter
+                                        </div>
+                                        <div className={`requirement ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(signupPassword) ? 'met' : ''}`}>
+                                            ✓ 1 special character
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="auth-form-group">
+                                <label>Confirm Password</label>
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    className="auth-input"
+                                    placeholder="Confirm your password"
+                                    value={signupConfirmPassword}
+                                    onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                                    required
+                                    disabled={loading}
+                                />
+                                {signupConfirmPassword && !passwordsMatch && (
+                                    <div className="password-mismatch">Passwords do not match</div>
+                                )}
+                                {signupConfirmPassword && passwordsMatch && signupPassword && (
+                                    <div className="password-match">Passwords match ✓</div>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                className="auth-btn-primary"
+                                disabled={loading || !isSignupFormValid}
+                            >
+                                {loading ? "SIGNING UP..." : "SIGN UP"}
+                            </button>
+                        </form>
+                    )}
+
+                    <div className="auth-divider">
+                        <span>OR</span>
+                    </div>
 
                     <div className="wallet-options">
                         <button
@@ -65,10 +315,6 @@ export default function Auth() {
                         </button>
                     </div>
 
-                    <div className="auth-divider">
-                        <span>OR</span>
-                    </div>
-
                     <div className="google-section">
                         <button
                             className="google-option"
@@ -76,24 +322,8 @@ export default function Auth() {
                             disabled={loading}
                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
                         >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M21.35 11.1H12V15.3H17.5C17.2 16.3 16.5 17.2 15.7 17.8L15.7 17.8L18.5 20C20.1 18.5 21.1 16.4 21.35 14C21.4 13 21.4 12 21.35 11.1Z" fill="currentColor" />
-                                <path d="M12 21C14.6 21 16.8 20.1 18.5 18.6L15.7 16.4C14.8 17 13.7 17.4 12.5 17.4C9.9 17.4 7.7 15.8 6.9 13.5H4L4 15.7C5.7 18.9 9.1 21 12 21Z" fill="currentColor" />
-                                <path d="M6.9 13.5C6.7 12.8 6.6 12.1 6.6 11.4C6.6 10.7 6.7 10 6.9 9.3V7.1H4C3.2 8.5 2.8 10.1 2.8 11.8C2.8 13.5 3.2 15.1 4 16.5L6.9 13.5Z" fill="currentColor" />
-                                <path d="M12 5.4C13.5 5.4 14.8 5.9 15.8 6.8L18.6 4C16.9 2.4 14.6 1.5 12 1.5C9.1 1.5 5.7 3.6 4 6.8L6.9 9C7.7 6.9 9.9 5.4 12 5.4Z" fill="currentColor" />
-                            </svg>
+                            <FcGoogle size={24} />
                             CONTINUE WITH GOOGLE
-                        </button>
-                        <button
-                            className="reddit-option"
-                            onClick={() => loginWithOAuth('oauth_reddit')}
-                            disabled={loading}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12 0C5.373 0 0 5.373 0 12C0 18.627 5.373 24 12 24C18.627 24 24 18.627 24 12C24 5.373 18.627 0 12 0ZM17.472 13.056C17.472 14.928 15.024 16.464 12 16.464C8.976 16.464 6.528 14.928 6.528 13.056C6.528 12.192 6.96 11.424 7.632 10.896C7.584 10.656 7.536 10.416 7.536 10.128C7.536 8.832 8.592 7.776 9.888 7.776C10.752 7.776 11.472 8.256 11.856 8.928C12.768 8.784 13.728 8.784 14.688 8.928C15.072 8.256 15.792 7.776 16.656 7.776C17.952 7.776 19.008 8.832 19.008 10.128C19.008 10.416 18.96 10.656 18.912 10.896C19.584 11.424 20.016 12.192 17.472 13.056Z" />
-                            </svg>
-                            CONTINUE WITH REDDIT
                         </button>
                     </div>
                 </div>
