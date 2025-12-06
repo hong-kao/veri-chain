@@ -833,10 +833,10 @@
     display: inline-flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem 1.5rem;
+    padding: 1.25rem 2.5rem;
     font-size: 1.1rem;
     font-weight: 700;
-    margin-bottom: 1.5rem;
+    margin: 1.5rem 0 2rem 0;
     border-radius: 8px;
     position: relative;
     overflow: hidden;

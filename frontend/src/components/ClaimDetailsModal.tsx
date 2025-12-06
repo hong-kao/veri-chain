@@ -103,12 +103,9 @@ export default function ClaimDetailsModal({
 
                     {/* AI Verdict */}
                     {claim.verdict && (
-                        <div className="claim-detail-section">
+                        <div className="claim-detail-section" style={{ marginTop: '2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'center' }}>
                             <div className={`verdict-badge ${getVerdictClass(claim.verdict)}`}>
                                 {getVerdictLabel(claim.verdict)}
-                                {claim.confidence !== null && (
-                                    <span className="confidence">({claim.confidence}% confidence)</span>
-                                )}
                             </div>
                         </div>
                     )}
