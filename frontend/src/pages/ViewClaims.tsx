@@ -1,74 +1,84 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppNav from "../components/AppNav";
+import ClaimDetailsModal from "../components/ClaimDetailsModal";
+import api from "../services/api";
 import "../styles/AppPages.css";
-
-// Mock claims data - will be replaced with API calls
-const MOCK_CLAIMS = [
-    {
-        id: "1234",
-        statement: "AI will revolutionize healthcare diagnostics within the next 5 years",
-        category: "Technology",
-        status: "active",
-        confidence: 87,
-        upvotes: 45,
-        downvotes: 12,
-        submittedAt: "2025-12-01",
-    },
-    {
-        id: "1235",
-        statement: "Bitcoin will reach $150k by end of 2025",
-        category: "Finance",
-        status: "active",
-        confidence: 72,
-        upvotes: 89,
-        downvotes: 34,
-        submittedAt: "2025-11-28",
-    },
-    {
-        id: "1236",
-        statement: "Electric vehicles will outsell gas cars by 2027",
-        category: "Technology",
-        status: "verified",
-        confidence: 91,
-        upvotes: 156,
-        downvotes: 23,
-        submittedAt: "2025-11-15",
-        resolvedAt: "2025-12-02",
-        points: 150,
-    },
-    {
-        id: "1237",
-        statement: "Team X will win the championship this season",
-        category: "Sports",
-        status: "rejected",
-        confidence: 45,
-        upvotes: 12,
-        downvotes: 67,
-        submittedAt: "2025-11-10",
-        resolvedAt: "2025-12-01",
-        points: -50,
-    },
-];
 
 type FilterType = 'all' | 'active' | 'completed';
 
+interface Claim {
+    id: number;
+    statement: string;
+    category: string;
+    verdict: string | null;
+    confidence: number | null;
+    status: string;
+    submittedAt: string;
+    resolvedAt: string | null;
+    upvotes: number;
+    downvotes: number;
+    points: number | undefined;
+    submitter_id?: number;
+}
+
 export default function ViewClaims() {
-    const { walletAddress, canVote } = useAuth();
+    const { walletAddress, canVote, user } = useAuth();
     const [filter, setFilter] = useState<FilterType>('all');
-    const [votes, setVotes] = useState<{ [key: string]: 'up' | 'down' | null }>({});
+    const [votes, setVotes] = useState<{ [key: number]: 'up' | 'down' | null }>({});
+    const [claims, setClaims] = useState<Claim[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
 
     const hasWallet = !!walletAddress;
 
-    const filteredClaims = MOCK_CLAIMS.filter(claim => {
+    // Fetch claims from backend
+    useEffect(() => {
+        const fetchClaims = async () => {
+            try {
+                const response = await api.getAllClaims();
+                if (response.success) {
+                    // Add mock upvotes/downvotes/points for now until API provides them
+                    const claimsWithVotes = response.claims.map((claim: any) => ({
+                        ...claim,
+                        upvotes: Math.floor(Math.random() * 100),
+                        downvotes: Math.floor(Math.random() * 50),
+                        points: claim.verdict ? (claim.verdict.toLowerCase().includes('true') ? 150 : -50) : undefined,
+                    }));
+                    setClaims(claimsWithVotes);
+                }
+            } catch (error) {
+                console.error('Failed to fetch claims:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchClaims();
+    }, []);
+
+    // Map verdict to display status
+    const getDisplayStatus = (claim: Claim) => {
+        // If claim has AI verdict, treat as completed
+        if (claim.verdict) {
+            const verdict = claim.verdict.toLowerCase();
+            if (verdict === 'false' || verdict === 'false_') return 'rejected';
+            if (verdict === 'true' || verdict === 'true_') return 'verified';
+            return 'pending'; // If verdict exists but isn't true/false, consider it pending resolution
+        }
+        return 'active';
+    };
+
+    const filteredClaims = claims.filter(claim => {
         if (filter === 'all') return true;
-        if (filter === 'active') return claim.status === 'active';
-        if (filter === 'completed') return claim.status === 'verified' || claim.status === 'rejected';
+        const displayStatus = getDisplayStatus(claim);
+        if (filter === 'active') return displayStatus === 'active' || displayStatus === 'pending';
+        if (filter === 'completed') return displayStatus === 'verified' || displayStatus === 'rejected';
         return true;
     });
 
-    const handleVote = (claimId: string, voteType: 'up' | 'down') => {
+    const handleVote = (claimId: number, voteType: 'up' | 'down') => {
         if (!hasWallet) {
             alert('Please connect your wallet to vote on claims');
             return;
@@ -124,19 +134,19 @@ export default function ViewClaims() {
                         className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
                         onClick={() => setFilter('all')}
                     >
-                        All ({MOCK_CLAIMS.length})
+                        All ({claims.length})
                     </button>
                     <button
                         className={`filter-btn ${filter === 'active' ? 'active' : ''}`}
                         onClick={() => setFilter('active')}
                     >
-                        Active ({MOCK_CLAIMS.filter(c => c.status === 'active').length})
+                        Active ({claims.filter((c: Claim) => getDisplayStatus(c) === 'active' || getDisplayStatus(c) === 'pending').length})
                     </button>
                     <button
                         className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
                         onClick={() => setFilter('completed')}
                     >
-                        Completed ({MOCK_CLAIMS.filter(c => c.status !== 'active').length})
+                        Completed ({claims.filter((c: Claim) => getDisplayStatus(c) === 'verified' || getDisplayStatus(c) === 'rejected').length})
                     </button>
                 </div>
 
@@ -157,66 +167,52 @@ export default function ViewClaims() {
                         </Link>
                     </div>
                 ) : (
-                    filteredClaims.map(claim => (
-                        <div
-                            key={claim.id}
-                            className={`claim-card ${claim.status === 'active' ? 'active' : 'completed'}`}
-                        >
-                            <div className="claim-header">
-                                <span className={`claim-status ${claim.status}`}>
-                                    {claim.status === 'active' && '🟢 '}
-                                    {claim.status === 'verified' && '✓ '}
-                                    {claim.status === 'rejected' && '✗ '}
-                                    {getStatusLabel(claim.status)}
-                                </span>
-                                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>
-                                    #{claim.id}
-                                </span>
-                            </div>
-
-                            <p className="claim-text">{claim.statement}</p>
-
-                            <div className="claim-meta">
-                                <div>
-                                    <span style={{ marginRight: '1.5rem' }}>
-                                        Category: {claim.category}
+                    filteredClaims.map(claim => {
+                        const displayStatus = getDisplayStatus(claim);
+                        return (
+                            <div
+                                key={claim.id}
+                                className={`claim-card ${displayStatus === 'active' || displayStatus === 'pending' ? 'active' : 'completed'}`}
+                                onClick={() => setSelectedClaim(claim)}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <div className="claim-header">
+                                    <span className={`claim-status ${displayStatus}`}>
+                                        {displayStatus === 'active' && '🟢 '}
+                                        {displayStatus === 'verified' && '✓ '}
+                                        {displayStatus === 'rejected' && '✗ '}
+                                        {displayStatus === 'pending' && '⏳ '}
+                                        {getStatusLabel(displayStatus)}
                                     </span>
-                                    <span>
-                                        {claim.status === 'active'
-                                            ? `Submitted: ${claim.submittedAt}`
-                                            : `Resolved: ${claim.resolvedAt}`}
+                                    <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>
+                                        #{claim.id}
                                     </span>
-                                    {claim.points !== undefined && (
-                                        <span style={{
-                                            marginLeft: '1.5rem',
-                                            color: claim.points > 0 ? '#22c55e' : '#ef4444',
-                                            fontWeight: 600
-                                        }}>
-                                            Points: {claim.points > 0 ? '+' : ''}{claim.points}
-                                        </span>
-                                    )}
                                 </div>
 
-                                {claim.status === 'active' && (
-                                    <div className="claim-votes">
-                                        <button
-                                            className={`vote-btn upvote ${votes[claim.id] === 'up' ? 'voted' : ''}`}
-                                            onClick={() => handleVote(claim.id, 'up')}
-                                            disabled={!hasWallet}
-                                        >
-                                            ▲ {claim.upvotes + (votes[claim.id] === 'up' ? 1 : 0)}
-                                        </button>
-                                        <button
-                                            className={`vote-btn downvote ${votes[claim.id] === 'down' ? 'voted' : ''}`}
-                                            onClick={() => handleVote(claim.id, 'down')}
-                                            disabled={!hasWallet}
-                                        >
-                                            ▼ {claim.downvotes + (votes[claim.id] === 'down' ? 1 : 0)}
-                                        </button>
-                                    </div>
-                                )}
+                                <p className="claim-text">{claim.statement}</p>
 
-                                {claim.status !== 'active' && (
+                                <div className="claim-meta">
+                                    <div>
+                                        <span style={{ marginRight: '1.5rem' }}>
+                                            Category: {claim.category}
+                                        </span>
+                                        <span>
+                                            {displayStatus === 'active' || displayStatus === 'pending'
+                                                ? `Submitted: ${new Date(claim.submittedAt).toLocaleDateString()}`
+                                                : `Resolved: ${claim.resolvedAt ? new Date(claim.resolvedAt).toLocaleDateString() : 'N/A'}`}
+                                        </span>
+                                        {claim.confidence !== null && displayStatus !== 'active' && (
+                                            <span style={{
+                                                marginLeft: '1.5rem',
+                                                color: claim.confidence >= 70 ? '#22c55e' : '#f59e0b',
+                                                fontWeight: 600
+                                            }}>
+                                                AI Confidence: {claim.confidence}%
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Show vote counts inline, but voting happens in modal */}
                                     <div style={{
                                         display: 'flex',
                                         gap: '1rem',
@@ -225,12 +221,23 @@ export default function ViewClaims() {
                                         <span>▲ {claim.upvotes}</span>
                                         <span>▼ {claim.downvotes}</span>
                                     </div>
-                                )}
+                                </div>
                             </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
-        </div>
+
+            {/* Claim Details Modal */}
+            {selectedClaim && (
+                <ClaimDetailsModal
+                    claim={selectedClaim}
+                    showVoting={true}
+                    currentUserId={user?.id}
+                    onClose={() => setSelectedClaim(null)}
+                    onVote={handleVote}
+                />
+            )}
+        </div >
     );
 }

@@ -187,6 +187,53 @@ router.post('/submit', upload.fields([
 });
 
 /**
+ * GET /api/claims
+ * Get all claims (for View Claims page)
+ */
+router.get('/', async (req, res) => {
+    try {
+        const claims = await prisma.claim.findMany({
+            orderBy: {
+                created_at: 'desc'
+            },
+            select: {
+                id: true,
+                normalized_text: true,
+                claim_type: true,
+                ai_verdict: true,
+                ai_confidence: true,
+                final_verdict: true,
+                status: true,
+                created_at: true,
+                updated_at: true,
+                submitter_id: true
+            }
+        });
+
+        res.json({
+            success: true,
+            claims: claims.map(claim => ({
+                id: claim.id,
+                statement: claim.normalized_text,
+                category: claim.claim_type,
+                verdict: claim.final_verdict || claim.ai_verdict,
+                confidence: claim.ai_confidence ? Math.round(claim.ai_confidence * 100) : null,
+                status: claim.status,
+                submittedAt: claim.created_at,
+                resolvedAt: claim.updated_at,
+                submitter_id: claim.submitter_id
+            }))
+        });
+    } catch (error: any) {
+        console.error('Error fetching claims:', error);
+        res.status(500).json({
+            error: 'Failed to fetch claims',
+            message: error.message
+        });
+    }
+});
+
+/**
  * GET /api/claims/:claimId/status
  * Get the current status and results of a claim
  */

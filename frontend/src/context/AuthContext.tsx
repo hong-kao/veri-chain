@@ -27,6 +27,7 @@ export interface AuthState {
 
 interface AuthContextType extends AuthState {
     user: {
+        id?: number;
         displayName: string;
         email?: string;
         walletAddress?: string;
@@ -298,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const user = {
+        id: authState.userId,
         displayName: savedProfile?.displayName || authState.oauthUser?.name || (authState.walletAddress ? `${authState.walletAddress.slice(0, 6)}...${authState.walletAddress.slice(-4)}` : (authState.email || 'Guest')),
         email: savedProfile?.email || authState.oauthUser?.email || authState.email,
         walletAddress: authState.walletAddress,

@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import { registerClaimOnChain, isWalletConnected } from "../services/contracts";
 import AppNav from "../components/AppNav";
+import ClaimDetailsModal from "../components/ClaimDetailsModal";
 import "../styles/AppPages.css";
 
 const QUOTES = [
@@ -24,7 +25,11 @@ export default function SubmitClaim() {
         verdict: 'true' | 'false' | 'uncertain' | 'true_' | 'false_' | 'unclear';
         confidence: number;
         explanation: string;
+        claimId?: number;
+        needsVoting?: boolean;
+        agentResults?: Array<{ name: string; verdict: string; confidence: number }>;
     } | null>(null);
+    const [showModal, setShowModal] = useState(false);
 
     const [randomQuote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
@@ -134,21 +139,32 @@ export default function SubmitClaim() {
                             verdictType = 'false';
                         }
 
-                        // Generate explanation from agent results
-                        let explanation = "Analysis complete. ";
+                        // Parse agent results for modal display
+                        let parsedAgentResults: Array<{ name: string; verdict: string; confidence: number }> = [];
                         if (statusResult.results?.agentResults && statusResult.results.agentResults.length > 0) {
-                            const agentSummaries = statusResult.results.agentResults
-                                .map((ar: any) => `${ar.agent}: ${ar.verdict} (${Math.round((ar.confidence || 0.5) * 100)}%)`)
-                                .join(', ');
-                            explanation += `Agent analysis: ${agentSummaries}`;
-                        } else {
-                            explanation += "Our AI has analyzed this claim based on multiple factors including source credibility, citation verification, and pattern analysis.";
+                            parsedAgentResults = statusResult.results.agentResults.map((ar: any) => ({
+                                name: ar.agent.replace(/_/g, ' '),
+                                verdict: ar.verdict?.toLowerCase() || 'unclear',
+                                confidence: Math.round((ar.confidence || 0.5) * 100)
+                            }));
                         }
+
+                        // Determine if voting is needed based on confidence
+                        const confidence = Math.round((statusResult.results?.aiConfidence ?? 0.5) * 100);
+                        const needsVoting = confidence < 70;
+
+                        // Brief summary for simplified display
+                        const briefSummary = needsVoting
+                            ? "AI analysis is uncertain. This claim requires community voting to reach a final verdict."
+                            : `AI has determined this claim is ${verdictType === 'true' ? 'likely true' : verdictType === 'false' ? 'likely false' : 'uncertain'} with ${confidence}% confidence.`;
 
                         setResponse({
                             verdict: verdictType,
-                            confidence: Math.round((statusResult.results?.aiConfidence ?? 0.5) * 100),
-                            explanation
+                            confidence,
+                            explanation: briefSummary,
+                            claimId: claimId,
+                            needsVoting,
+                            agentResults: parsedAgentResults
                         });
                         break;
                     }
@@ -230,62 +246,13 @@ export default function SubmitClaim() {
                                 <span className="confidence">({response.confidence}% confidence)</span>
                             </div>
 
-                            {/* Parse and display agent results if available */}
-                            {(() => {
-                                // Extract agent analysis from explanation
-                                const agentMatch = response.explanation.match(/Agent analysis: (.+)/);
-                                if (agentMatch) {
-                                    const agentData = agentMatch[1];
-                                    const agents = agentData.split(', ').map((item, index) => {
-                                        const parts = item.match(/([^:]+): ([^(]+) \((\d+)%\)/);
-                                        if (parts) {
-                                            return {
-                                                name: parts[1].replace(/_/g, ' '),
-                                                verdict: parts[2].trim().toLowerCase(),
-                                                confidence: parseInt(parts[3])
-                                            };
-                                        }
-                                        return null;
-                                    }).filter(Boolean);
+                            {/* Simplified display */}
+                            <p className="response-text">{response.explanation}</p>
 
-                                    if (agents.length > 0) {
-                                        return (
-                                            <div className="agent-analysis-section">
-                                                <div className="agent-analysis-title">Individual Agent Analysis</div>
-                                                <div className="agent-results-grid">
-                                                    {agents.map((agent: any, index: number) => {
-                                                        const confidenceLevel = agent.confidence >= 70 ? 'high' : agent.confidence >= 40 ? 'medium' : 'low';
-                                                        return (
-                                                            <div
-                                                                key={index}
-                                                                className="agent-result-card"
-                                                                style={{ '--index': index } as React.CSSProperties}
-                                                            >
-                                                                <div className="agent-result-header">
-                                                                    <div className="agent-name">{agent.name}</div>
-                                                                    <div className={`agent-verdict ${agent.verdict}`}>
-                                                                        {agent.verdict}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="agent-confidence-bar">
-                                                                    <div
-                                                                        className={`agent-confidence-fill ${confidenceLevel}`}
-                                                                        style={{ width: `${agent.confidence}%` }}
-                                                                    ></div>
-                                                                </div>
-                                                                <div className="agent-confidence-text">
-                                                                    {agent.confidence}% confidence
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-                                }
-                                return <p className="response-text">{response.explanation}</p>;
-                            })()}
+                            {/* More Details button */}
+                            <button className="new-claim-btn" onClick={() => setShowModal(true)} style={{ marginBottom: '1rem' }}>
+                                More Details
+                            </button>
 
                             <button className="new-claim-btn" onClick={resetChat}>
                                 Submit Another Claim
@@ -372,6 +339,28 @@ export default function SubmitClaim() {
                     </div>
                 )}
             </div>
+
+            {/* Claim Details Modal */}
+            {showModal && response && response.claimId && (
+                <ClaimDetailsModal
+                    claim={{
+                        id: response.claimId,
+                        statement: claimText,
+                        category: "General",
+                        verdict: response.verdict,
+                        confidence: response.confidence,
+                        status: response.needsVoting ? 'active' : 'completed',
+                        submittedAt: new Date().toISOString(),
+                        resolvedAt: response.needsVoting ? null : new Date().toISOString()
+                    }}
+                    agentResults={response.agentResults}
+                    explanation={response.explanation}
+                    showVoting={false}
+                    onClose={() => setShowModal(false)}
+                    navigateOnClose="/claims"
+                    customButtonText={response.needsVoting ? "See Voting Status" : "Go to Claims Page"}
+                />
+            )}
         </div>
     );
 }

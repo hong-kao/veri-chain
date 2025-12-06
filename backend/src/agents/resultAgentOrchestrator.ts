@@ -5,6 +5,7 @@ import prisma from '../config/db.config.js';
 import { ethers } from 'ethers';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '../utils/email.js';
+import { sendVotingNotifications } from '../services/emailService.js';
 import { logicConsistencyAgent } from './textForensicsAgent.js';
 import { citationEvidenceAgent } from './citationAgent.js';
 import { sourceCredibilityAgent } from './sourceCredAgent.js';
@@ -693,8 +694,16 @@ export class ResultOrchestrator {
       claim.platform
     );
 
-    // Notify eligible voters
+    // Notify eligible voters (in-app notifications)
     await this.notifyVoters(claimId, session.id, eligibleVoterIds);
+
+    // Send email notifications to ALL users
+    console.log(`📧 Sending email notifications to all users...`);
+    await sendVotingNotifications(
+      claimId,
+      claim.normalized_text || claim.raw_input || 'A claim needs verification',
+      claim.submitter_id // Exclude the submitter from email notifications
+    );
   }
 
   /**

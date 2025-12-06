@@ -253,6 +253,14 @@ export const api = {
     },
 
     /**
+     * Get all claims (for View Claims page)
+     */
+    async getAllClaims(): Promise<any> {
+        const response = await apiClient.get('/claims');
+        return response.data;
+    },
+
+    /**
      * Legacy: Simple claim analysis
      */
     async analyzeClaim(claim: string): Promise<any> {
