@@ -489,6 +489,31 @@
     }
 }
 
+/* Loading State */
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.loader-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Modal Styles */
 .modal-overlay {
     position: fixed;
@@ -507,10 +532,13 @@
 .modal-content {
     background: #111111;
     border: 1px solid rgba(255, 255, 255, 0.15);
-    width: 100%;
-    max-width: 500px;
+    width: auto;
+    min-width: 320px;
+    max-width: 420px;
+    height: auto;
     max-height: 80vh;
     overflow-y: auto;
+    border-radius: 12px;
 }
 
 .modal-header {
@@ -1255,7 +1283,58 @@
 
 /* Claim Detail Modal Specific Styles */
 .claim-detail-modal {
-    max-width: 700px;
+    max-width: 750px;
+    width: 90vw;
+}
+
+/* Center AI verdict badge */
+.claim-detail-modal .verdict-badge {
+    display: flex;
+    justify-content: center;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.voting-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    justify-content: center;
+}
+
+.vote-stat {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.vote-stat.upvote {
+    color: #22c55e;
+}
+
+.vote-stat.downvote {
+    color: #ef4444;
+}
+
+/* Disabled vote buttons for authors */
+.vote-btn-large.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.vote-btn-large.disabled:hover {
+    transform: none;
+}
+
+/* Author note */
+.author-note {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9rem;
+    margin-top: 0.75rem;
+    font-style: italic;
 }
 
 .claim-detail-section {
@@ -1365,4 +1444,301 @@
     opacity: 0.3;
     cursor: not-allowed;
     transform: none;
+}
+
+/* ========================================
+   Community Feed Styles (Minimalist Redesign)
+   ======================================== */
+
+.community-container {
+    max-width: 1200px;
+    width: 95%;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.community-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0 0 2rem 0;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent;
+    border-radius: 0;
+}
+
+/* Replaced button styles with static display styles */
+.community-vote-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    /* Softer color */
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Base styles for upvote/downvote display */
+.community-vote-display.upvote {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.community-vote-display.downvote {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.community-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0 0 0.5rem 0;
+    color: #ffffff;
+    background: none;
+    -webkit-text-fill-color: initial;
+}
+
+.community-subtitle {
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0 0 1.5rem 0;
+    font-size: 1.1rem;
+    max-width: 500px;
+    line-height: 1.5;
+}
+
+.community-stats {
+    display: flex;
+    gap: 3rem;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+}
+
+.community-submit-btn {
+    background: #ffffff;
+    color: #000000;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.community-submit-btn:hover {
+    background: #e5e5e5;
+    transform: translateY(-1px);
+}
+
+.community-filters {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.community-filter-btn {
+    flex: 0 0 auto;
+    padding: 0 0 1rem 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.2s ease;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.community-filter-btn:hover {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.community-filter-btn.active {
+    background: transparent;
+    color: #ffffff;
+    font-weight: 600;
+    border-bottom-color: #ffffff;
+}
+
+.community-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    /* Removed gap for cleaner list feel */
+}
+
+.community-claim-card {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    /* Only bottom border */
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    padding: 2rem 0;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.community-claim-card:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.08);
+    transform: none;
+    /* Removed lift effect for minimalism */
+}
+
+.community-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.claim-time {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.community-verdict {
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.community-verdict.active {
+    background: transparent;
+    color: #f97316;
+    border: 1px solid rgba(249, 115, 22, 0.5);
+}
+
+.community-verdict.verified {
+    background: transparent;
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.community-verdict.rejected {
+    background: transparent;
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.community-verdict.pending {
+    background: transparent;
+    color: #eab308;
+    border: 1px solid rgba(234, 179, 8, 0.5);
+}
+
+.community-claim-text {
+    font-size: 1.15rem;
+    line-height: 1.5;
+    color: #ffffff;
+    margin: 0 0 1.25rem 0;
+    font-weight: 400;
+}
+
+.community-confidence {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 1rem;
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.community-confidence .high {
+    color: #22c55e;
+    font-weight: 600;
+}
+
+.community-confidence .low {
+    color: #f59e0b;
+    font-weight: 600;
+}
+
+.community-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0;
+    /* Removed top padding/border */
+    border-top: none;
+}
+
+.community-votes {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Replaced button styles with static display styles */
+.community-vote-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    /* Softer color */
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+
+
+.community-claim-id {
+    color: rgba(255, 255, 255, 0.2);
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .community-header {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .community-submit-btn {
+        width: 100%;
+    }
+
+    .community-stats {
+        justify-content: space-around;
+        width: 100%;
+    }
 }

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import { registerClaimOnChain, isWalletConnected } from "../services/contracts";
@@ -17,7 +17,11 @@ export default function SubmitClaim() {
     const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const [claimText, setClaimText] = useState("");
+    // Restore state from sessionStorage on mount
+    const [claimText, setClaimText] = useState(() => {
+        const saved = sessionStorage.getItem('pendingClaimText');
+        return saved || "";
+    });
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [statusMessage, setStatusMessage] = useState("");
@@ -28,10 +32,31 @@ export default function SubmitClaim() {
         claimId?: number;
         needsVoting?: boolean;
         agentResults?: Array<{ name: string; verdict: string; confidence: number }>;
-    } | null>(null);
+    } | null>(() => {
+        const saved = sessionStorage.getItem('pendingClaimResponse');
+        return saved ? JSON.parse(saved) : null;
+    });
     const [showModal, setShowModal] = useState(false);
 
     const [randomQuote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+
+    // Persist claim text to sessionStorage
+    useEffect(() => {
+        if (claimText) {
+            sessionStorage.setItem('pendingClaimText', claimText);
+        } else {
+            sessionStorage.removeItem('pendingClaimText');
+        }
+    }, [claimText]);
+
+    // Persist response to sessionStorage
+    useEffect(() => {
+        if (response) {
+            sessionStorage.setItem('pendingClaimResponse', JSON.stringify(response));
+        } else {
+            sessionStorage.removeItem('pendingClaimResponse');
+        }
+    }, [response]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -118,12 +143,12 @@ export default function SubmitClaim() {
 
                 try {
                     const statusResult = await api.getClaimStatus(claimId);
-                    console.log(`Status check ${attempts}:`, statusResult.status);
+                    console.log(`Status check ${attempts}: `, statusResult.status);
 
                     // Update status message based on progress
                     if (statusResult.results?.agentResults?.length > 0) {
                         const completedAgents = statusResult.results.agentResults.length;
-                        setStatusMessage(`Analyzing with AI agents (${completedAgents} completed)...`);
+                        setStatusMessage(`Analyzing with AI agents(${completedAgents} completed)...`);
                     }
 
                     // Check if processing is complete
@@ -179,7 +204,7 @@ export default function SubmitClaim() {
                         break;
                     }
                 } catch (pollError) {
-                    console.warn(`Polling attempt ${attempts} failed:`, pollError);
+                    console.warn(`Polling attempt ${attempts} failed: `, pollError);
                     // Continue polling on error
                 }
             }
@@ -198,7 +223,7 @@ export default function SubmitClaim() {
             setResponse({
                 verdict: 'uncertain',
                 confidence: 0,
-                explanation: `Error: ${err.message || 'Failed to submit claim. Please check that the backend is running.'}`
+                explanation: `Error: ${err.message || 'Failed to submit claim. Please check that the backend is running.'} `
             });
         } finally {
             setSubmitting(false);
@@ -217,6 +242,9 @@ export default function SubmitClaim() {
         setClaimText("");
         setAttachedFile(null);
         setResponse(null);
+        // Clear persisted state
+        sessionStorage.removeItem('pendingClaimText');
+        sessionStorage.removeItem('pendingClaimResponse');
     };
 
     return (
@@ -239,7 +267,7 @@ export default function SubmitClaim() {
                                 <span className="response-icon">🤖</span>
                                 <span className="response-label">AI Analysis</span>
                             </div>
-                            <div className={`verdict-badge ${response.verdict}`}>
+                            <div className={`verdict - badge ${response.verdict} `}>
                                 {(response.verdict === 'true' || response.verdict === 'true_') && '✓ Likely True'}
                                 {(response.verdict === 'false' || response.verdict === 'false_') && '✗ Likely False'}
                                 {(response.verdict === 'uncertain' || response.verdict === 'unclear') && '? Uncertain'}

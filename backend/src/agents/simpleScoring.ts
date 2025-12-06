@@ -129,21 +129,36 @@ function determineVerdict(score: number): 'TRUE' | 'FALSE' | 'UNCLEAR' {
 }
 
 /**
- * Calculate confidence based on how decisive the score is
+ * Calculate confidence based on agent confidences and decisiveness of score
  */
 function calculateConfidence(score: number, verdicts: AgentVerdict[]): number {
-    // How far from 50 (uncertain) is the score?
+    if (verdicts.length === 0) return 0.5;
+
+    // Calculate weighted average of agent confidences
+    let totalWeight = 0;
+    let weightedConfidence = 0;
+    for (const v of verdicts) {
+        const weight = v.weight * v.confidence;
+        weightedConfidence += v.confidence * weight;
+        totalWeight += weight;
+    }
+    const avgConfidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0.5;
+
+    // How decisive is the verdict? (far from 50)
     const decisiveness = Math.abs(score - 50) / 50;  // 0-1
 
-    // Average agent confidence
-    const avgConfidence = verdicts.length > 0
-        ? verdicts.reduce((sum, v) => sum + v.confidence, 0) / verdicts.length
-        : 0.5;
+    // Use the HIGHER of avg agent confidence or decisiveness
+    // This ensures we don't undercount confident agents
+    const baseConfidence = Math.max(avgConfidence, decisiveness);
 
-    // Combine decisiveness with average agent confidence
-    const confidence = (decisiveness * 0.6) + (avgConfidence * 0.4);
+    // If we have strong agreement (decisive), boost confidence
+    const agreementBonus = decisiveness > 0.3 ? 0.15 : 0;
 
-    return Math.min(1.0, Math.max(0.0, confidence));
+    const finalConfidence = Math.min(1.0, baseConfidence + agreementBonus);
+
+    console.log(`[Confidence] score=${score.toFixed(1)}, avgConf=${avgConfidence.toFixed(2)}, decisiveness=${decisiveness.toFixed(2)}, final=${finalConfidence.toFixed(2)}`);
+
+    return finalConfidence;
 }
 
 /**

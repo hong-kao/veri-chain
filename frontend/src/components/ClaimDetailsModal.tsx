@@ -46,8 +46,10 @@ export default function ClaimDetailsModal({
 }: ClaimDetailsModalProps) {
     const navigate = useNavigate();
 
-    const isOwnClaim = currentUserId === claim.submitter_id;
-    const canVote = showVoting && !isOwnClaim && claim.status === 'active';
+    const isOwnClaim = currentUserId !== undefined && currentUserId === claim.submitter_id;
+    // Check if claim is in a voteable state (not resolved)
+    const isClaimActive = claim.status === 'active' || claim.status === 'needs_vote' || claim.status === 'pending_ai' || claim.status === 'ai_evaluated';
+    const canVote = showVoting && !isOwnClaim && isClaimActive;
 
     const handleNavigationButton = () => {
         onClose();
@@ -90,10 +92,6 @@ export default function ClaimDetailsModal({
                     {/* Meta Information */}
                     <div className="claim-detail-meta">
                         <div className="meta-item">
-                            <span className="meta-label">Category:</span>
-                            <span className="meta-value">{claim.category}</span>
-                        </div>
-                        <div className="meta-item">
                             <span className="meta-label">Submitted:</span>
                             <span className="meta-value">{new Date(claim.submittedAt).toLocaleDateString()}</span>
                         </div>
@@ -106,7 +104,6 @@ export default function ClaimDetailsModal({
                     {/* AI Verdict */}
                     {claim.verdict && (
                         <div className="claim-detail-section">
-                            <h3 className="claim-detail-heading">AI Analysis</h3>
                             <div className={`verdict-badge ${getVerdictClass(claim.verdict)}`}>
                                 {getVerdictLabel(claim.verdict)}
                                 {claim.confidence !== null && (
@@ -159,33 +156,41 @@ export default function ClaimDetailsModal({
                         </div>
                     )}
 
-                    {/* Voting Section */}
+                    {/* Voting Section - Always show stats */}
                     {showVoting && (
                         <div className="claim-detail-section voting-section">
                             <h3 className="claim-detail-heading">Community Voting</h3>
-                            {isOwnClaim ? (
-                                <p className="voting-disabled-message">
-                                    You cannot vote on your own claim.
-                                </p>
-                            ) : !canVote ? (
-                                <p className="voting-disabled-message">
-                                    Voting is not available for this claim.
-                                </p>
+                            <div className="voting-stats">
+                                <span className="vote-stat upvote">▲ {claim.upvotes || 0} upvotes</span>
+                                <span className="vote-stat downvote">▼ {claim.downvotes || 0} downvotes</span>
+                            </div>
+                            {/* Vote buttons - show for everyone on active claims */}
+                            {isClaimActive ? (
+                                <>
+                                    <div className="modal-voting-buttons">
+                                        <button
+                                            className={`vote-btn-large upvote ${isOwnClaim ? 'disabled' : ''}`}
+                                            onClick={() => !isOwnClaim && onVote && onVote(claim.id, 'up')}
+                                            disabled={isOwnClaim}
+                                        >
+                                            ▲ Upvote
+                                        </button>
+                                        <button
+                                            className={`vote-btn-large downvote ${isOwnClaim ? 'disabled' : ''}`}
+                                            onClick={() => !isOwnClaim && onVote && onVote(claim.id, 'down')}
+                                            disabled={isOwnClaim}
+                                        >
+                                            ▼ Downvote
+                                        </button>
+                                    </div>
+                                    {isOwnClaim && (
+                                        <p className="author-note">Authors can't vote on their own claims 😉</p>
+                                    )}
+                                </>
                             ) : (
-                                <div className="modal-voting-buttons">
-                                    <button
-                                        className="vote-btn-large upvote"
-                                        onClick={() => onVote && onVote(claim.id, 'up')}
-                                    >
-                                        ▲ Upvote ({claim.upvotes || 0})
-                                    </button>
-                                    <button
-                                        className="vote-btn-large downvote"
-                                        onClick={() => onVote && onVote(claim.id, 'down')}
-                                    >
-                                        ▼ Downvote ({claim.downvotes || 0})
-                                    </button>
-                                </div>
+                                <p className="voting-disabled-message">
+                                    Voting is closed for this claim.
+                                </p>
                             )}
                         </div>
                     )}
