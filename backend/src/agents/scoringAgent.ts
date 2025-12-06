@@ -129,13 +129,15 @@ interface AggregatedVerdict {
 }
 
 //weighting for the ai agents
+// FIXED: Give more weight to agents that determine claim truthfulness (logic, evidence)
+// Credibility is now neutral (50) so its weight doesn't matter much
 const DEFAULT_WEIGHTS = {
-    logic: 0.25,
-    credibility: 0.30,
-    evidence: 0.25,
-    social: 0.05,
-    media: 0.10,
-    propagation: 0.05
+    logic: 0.35,        // Primary truthfulness indicator
+    credibility: 0.05,  // NOW NEUTRAL - source quality doesn't determine claim truth
+    evidence: 0.35,     // Primary evidence indicator
+    social: 0.10,       // Social signals matter somewhat
+    media: 0.10,        // Media forensics
+    propagation: 0.05   // Propagation patterns
 };
 
 //min-max normalisation
@@ -151,45 +153,101 @@ function calculateComponentScores(outputs: AgentOutputs): {
     mediaScore: number;
     propagationScore: number;
 } {
-    // Logic Score: TRUE=100, FALSE=0, UNCLEAR=50, weighted by confidence
+    // COMPLETELY REWRITTEN: All scores are based on VERDICT, not intermediate score fields
+    // The verdict is the ground truth from each agent:
+    // - 'true'/'TRUE' = claim is accurate/supported = score 100
+    // - 'false'/'FALSE' = claim is misinformation = score 0  
+    // - 'unclear' = neutral = score 50
+    // Scores are weighted by confidence
+
+    // Helper to convert verdict to score (0-100)
+    const verdictToScore = (verdict: string | undefined, confidence: number): number => {
+        const conf = confidence ?? 0.5;
+        if (verdict === 'true' || verdict === 'TRUE') {
+            // TRUE claim, high confidence = score near 100
+            return 50 + (50 * conf); // 50-100
+        } else if (verdict === 'false' || verdict === 'FALSE') {
+            // FALSE claim (misinformation), high confidence = score near 0
+            return 50 - (50 * conf); // 0-50
+        }
+        return 50; // unclear
+    };
+
+    // Logic Score: Based on verdict (TRUE=100, FALSE=0, UNCLEAR=50), weighted by confidence
     let logicScore = 50;
     if (outputs.logic) {
-        const baseScore = outputs.logic.verdict === 'true' ? 100
-            : outputs.logic.verdict === 'false' ? 0
-                : 50;
-        logicScore = baseScore * outputs.logic.confidence + 50 * (1 - outputs.logic.confidence);
+        logicScore = verdictToScore(outputs.logic.verdict, outputs.logic.confidence ?? 0.5);
     }
 
-    // Credibility Score: direct score (0-1) -> (0-100)
+    // Credibility Score: NOW USES VERDICT, not sourceCredibilityScore
+    // Note: source_credibility agent returning TRUE means sources are credible, but that's
+    // orthogonal to whether the CLAIM is true. For now, neutralize this.
     let credibilityScore = 50;
-    if (outputs.sourceCredibility) {
-        credibilityScore = normalizeScore(outputs.sourceCredibility.sourceCredibilityScore);
-    }
+    // Keeping neutral - source credibility doesn't determine claim truthfulness
 
-    // Evidence Score: citation score (0-1) -> (0-100)
+    // Evidence Score: USES VERDICT from citation agent
+    // If citation says FALSE = claim is not supported by evidence = low score
     let evidenceScore = 50;
     if (outputs.citation) {
-        evidenceScore = normalizeScore(outputs.citation.citationScore);
+        // Try to get verdict from the raw output
+        const rawResult = (outputs.citation as any).rawResult || outputs.citation;
+        const verdict = rawResult?.verdict || (outputs.citation as any).verdict;
+        const confidence = outputs.citation.confidence ?? 0.5;
+
+        if (verdict) {
+            evidenceScore = verdictToScore(verdict, confidence);
+        } else {
+            // Fallback to citationScore if no verdict
+            evidenceScore = normalizeScore(outputs.citation.citationScore ?? 0.5);
+        }
     }
 
-    // Social Score: (0-1) -> (0-100)
+    // Social Score: USES VERDICT from social evidence agent
     let socialScore = 50;
     if (outputs.socialEvidence) {
-        socialScore = normalizeScore(outputs.socialEvidence.socialScore);
+        const rawResult = (outputs.socialEvidence as any).rawResult || outputs.socialEvidence;
+        const verdict = rawResult?.verdict || (outputs.socialEvidence as any).verdict;
+        const confidence = outputs.socialEvidence.confidence ?? 0.5;
+
+        if (verdict) {
+            socialScore = verdictToScore(verdict, confidence);
+        } else {
+            socialScore = normalizeScore(outputs.socialEvidence.socialScore ?? 0.5);
+        }
     }
 
-    // Media Score: INVERSE of risk (high risk = low score)
+    // Media Score: USES VERDICT from media forensics agent
+    // FALSE = media is manipulated/claim is misinformation = low score
     let mediaScore = 50;
     if (outputs.mediaForensics) {
-        // Risk 0-100, so score = 100 - risk
-        mediaScore = 100 - outputs.mediaForensics.overallRiskScore;
+        const rawResult = (outputs.mediaForensics as any).rawResult || outputs.mediaForensics;
+        const verdict = rawResult?.verdict || (outputs.mediaForensics as any).verdict;
+        const confidence = outputs.mediaForensics.confidence ?? 0.5;
+
+        if (verdict) {
+            mediaScore = verdictToScore(verdict, confidence);
+        } else {
+            // Fallback to inverse of risk score
+            const riskScore = outputs.mediaForensics.overallRiskScore ?? 50;
+            mediaScore = 100 - riskScore;
+        }
     }
 
-    // Propagation Score: INVERSE of suspicion (high suspicion = low score)
+    // Propagation Score: USES VERDICT from propagation agent
+    // FALSE = suspicious propagation = claim is misinformation = low score
     let propagationScore = 50;
     if (outputs.propagation) {
-        // Suspicion 0-100, so score = 100 - suspicion
-        propagationScore = 100 - outputs.propagation.suspicionScore;
+        const rawResult = (outputs.propagation as any).rawResult || outputs.propagation;
+        const verdict = rawResult?.verdict || (outputs.propagation as any).verdict;
+        const confidence = outputs.propagation.confidence ?? 0.5;
+
+        if (verdict) {
+            propagationScore = verdictToScore(verdict, confidence);
+        } else {
+            // Fallback to inverse of suspicion score
+            const suspicionScore = outputs.propagation.suspicionScore ?? 50;
+            propagationScore = 100 - suspicionScore;
+        }
     }
 
     return {
@@ -226,12 +284,24 @@ function calculateConfidence(outputs: AgentOutputs, overallScore: number): numbe
     // Average confidence from all agents that ran
     const confidences: number[] = [];
 
-    if (outputs.logic) confidences.push(outputs.logic.confidence);
-    if (outputs.sourceCredibility) confidences.push(outputs.sourceCredibility.confidence);
-    if (outputs.citation) confidences.push(outputs.citation.confidence);
-    if (outputs.socialEvidence) confidences.push(outputs.socialEvidence.confidence);
-    if (outputs.mediaForensics) confidences.push(outputs.mediaForensics.confidence);
-    if (outputs.propagation) confidences.push(outputs.propagation.confidence);
+    if (outputs.logic && typeof outputs.logic.confidence === 'number' && !isNaN(outputs.logic.confidence)) {
+        confidences.push(outputs.logic.confidence);
+    }
+    if (outputs.sourceCredibility && typeof outputs.sourceCredibility.confidence === 'number' && !isNaN(outputs.sourceCredibility.confidence)) {
+        confidences.push(outputs.sourceCredibility.confidence);
+    }
+    if (outputs.citation && typeof outputs.citation.confidence === 'number' && !isNaN(outputs.citation.confidence)) {
+        confidences.push(outputs.citation.confidence);
+    }
+    if (outputs.socialEvidence && typeof outputs.socialEvidence.confidence === 'number' && !isNaN(outputs.socialEvidence.confidence)) {
+        confidences.push(outputs.socialEvidence.confidence);
+    }
+    if (outputs.mediaForensics && typeof outputs.mediaForensics.confidence === 'number' && !isNaN(outputs.mediaForensics.confidence)) {
+        confidences.push(outputs.mediaForensics.confidence);
+    }
+    if (outputs.propagation && typeof outputs.propagation.confidence === 'number' && !isNaN(outputs.propagation.confidence)) {
+        confidences.push(outputs.propagation.confidence);
+    }
 
     const avgConfidence = confidences.length > 0
         ? confidences.reduce((sum, c) => sum + c, 0) / confidences.length
@@ -255,7 +325,7 @@ function extractStrongSignals(
         if (outputs.logic.confidence > 0.8) {
             signals.push(`Logic analysis ${outputs.logic.verdict} with ${(outputs.logic.confidence * 100).toFixed(0)}% confidence`);
         }
-        if (outputs.logic.flags.length > 0) {
+        if (outputs.logic.flags && outputs.logic.flags.length > 0) {
             signals.push(`Logic flags: ${outputs.logic.flags.join(', ')}`);
         }
     }
@@ -271,8 +341,8 @@ function extractStrongSignals(
 
     // Evidence signals
     if (outputs.citation) {
-        const supporting = outputs.citation.supportingSources.length;
-        const contradicting = outputs.citation.contradictingSources.length;
+        const supporting = outputs.citation.supportingSources?.length || 0;
+        const contradicting = outputs.citation.contradictingSources?.length || 0;
         if (supporting > contradicting && supporting > 2) {
             signals.push(`Strong supporting evidence (${supporting} sources)`);
         } else if (contradicting > supporting && contradicting > 2) {
@@ -291,7 +361,7 @@ function extractWarnings(outputs: AgentOutputs): string[] {
         if (outputs.propagation.suspicionScore > 60) {
             warnings.push('Suspicious propagation patterns detected');
         }
-        if (outputs.propagation.flags.length > 0) {
+        if (outputs.propagation.flags && outputs.propagation.flags.length > 0) {
             warnings.push(`Propagation flags: ${outputs.propagation.flags.join(', ')}`);
         }
     }
@@ -305,7 +375,7 @@ function extractWarnings(outputs: AgentOutputs): string[] {
 
     // Source warnings
     if (outputs.sourceCredibility) {
-        if (outputs.sourceCredibility.flaggedIssues.length > 0) {
+        if (outputs.sourceCredibility.flaggedIssues && outputs.sourceCredibility.flaggedIssues.length > 0) {
             warnings.push(`Source issues: ${outputs.sourceCredibility.flaggedIssues.join(', ')}`);
         }
     }
@@ -334,7 +404,8 @@ Be objective and factual.`;
     const agentSummaries: string[] = [];
 
     if (outputs.logic) {
-        agentSummaries.push(`Logic: ${outputs.logic.verdict} (confidence: ${(outputs.logic.confidence * 100).toFixed(0)}%). ${outputs.logic.reasons.slice(0, 2).join('. ')}`);
+        const reasons = outputs.logic.reasons?.slice(0, 2).join('. ') || 'No specific reasons provided';
+        agentSummaries.push(`Logic: ${outputs.logic.verdict} (confidence: ${(outputs.logic.confidence * 100).toFixed(0)}%). ${reasons}`);
     }
     if (outputs.sourceCredibility) {
         agentSummaries.push(`Sources: ${outputs.sourceCredibility.explanation}`);

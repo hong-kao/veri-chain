@@ -83,7 +83,9 @@ router.post('/submit', upload.fields([
             claimType = 'OTHER',
             platform,
             platformUrl,
-            platformAuthor
+            platformAuthor,
+            onchainTxHash,
+            claimHash
         } = req.body;
 
         // Validation
@@ -135,7 +137,9 @@ router.post('/submit', upload.fields([
             platformAuthor: platformAuthor || null,
             extractedUrls: extractUrls(claim),
             mediaImages: imageUrls,
-            mediaVideos: videoUrls
+            mediaVideos: videoUrls,
+            onchainTxHash: onchainTxHash || null,  // User-provided on-chain tx hash
+            claimHash: claimHash || null            // User-provided claim hash
         };
 
         if (orchestrator) {

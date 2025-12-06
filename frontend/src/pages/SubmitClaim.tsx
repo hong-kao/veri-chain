@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
+import api from "../services/api";
+import { registerClaimOnChain, isWalletConnected } from "../services/contracts";
 import AppNav from "../components/AppNav";
 import "../styles/AppPages.css";
 
@@ -17,8 +19,9 @@ export default function SubmitClaim() {
     const [claimText, setClaimText] = useState("");
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [statusMessage, setStatusMessage] = useState("");
     const [response, setResponse] = useState<{
-        verdict: 'true' | 'false' | 'uncertain';
+        verdict: 'true' | 'false' | 'uncertain' | 'true_' | 'false_' | 'unclear';
         confidence: number;
         explanation: string;
     } | null>(null);
@@ -44,26 +47,146 @@ export default function SubmitClaim() {
 
         setSubmitting(true);
         setResponse(null);
+        setStatusMessage("Checking wallet connection...");
 
         try {
-            // TODO: Replace with actual API call to AI engine
+            // Check if wallet is connected
+            const walletConnected = await isWalletConnected();
+            if (!walletConnected) {
+                throw new Error("Please connect your wallet to submit claims on-chain. This ensures true decentralization.");
+            }
+
             console.log("Submitting claim:", claimText);
-            console.log("Attached file:", attachedFile?.name);
 
-            // Simulate AI inference delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Step 1: Generate a temporary claim UUID for on-chain registration
+            const tempUuid = crypto.randomUUID();
 
-            // Mock response - replace with actual API response
-            setResponse({
-                verdict: 'uncertain',
-                confidence: 72,
-                explanation: "This claim requires further verification. Our AI analysis suggests there may be elements of truth, but key facts need to be independently confirmed through additional sources."
+            // Step 2: Register on-chain FIRST (user signs with their wallet)
+            setStatusMessage("Please confirm the transaction in your wallet...");
+            const onchainResult = await registerClaimOnChain(claimText.trim(), tempUuid);
+
+            if (!onchainResult) {
+                throw new Error("Failed to register claim on-chain");
+            }
+
+            console.log("✅ On-chain registration complete:", onchainResult.txHash);
+            setStatusMessage("Claim registered on-chain! Submitting to AI agents...");
+
+            // Step 3: Prepare files for upload
+            const images: File[] = [];
+            const videos: File[] = [];
+
+            if (attachedFile) {
+                if (attachedFile.type.startsWith('image/')) {
+                    images.push(attachedFile);
+                } else if (attachedFile.type.startsWith('video/')) {
+                    videos.push(attachedFile);
+                }
+            }
+
+            // Step 4: Submit claim to backend WITH the on-chain tx hash
+            const submitResult = await api.submitClaim({
+                claim: claimText.trim(),
+                claimType: 'OTHER',
+                images: images.length > 0 ? images : undefined,
+                videos: videos.length > 0 ? videos : undefined,
+                onchainTxHash: onchainResult.txHash,
+                claimHash: onchainResult.claimHash,
             });
+
+            console.log("Claim submitted to backend:", submitResult);
+
+            if (!submitResult.success || !submitResult.claimId) {
+                throw new Error(submitResult.message || 'Failed to submit claim to backend');
+            }
+
+            const claimId = submitResult.claimId;
+            setStatusMessage("AI agents are analyzing your claim...");
+
+            // Poll for results
+            const maxAttempts = 120; // 4 minutes max (2s intervals)
+            let attempts = 0;
+
+            while (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                attempts++;
+
+                try {
+                    const statusResult = await api.getClaimStatus(claimId);
+                    console.log(`Status check ${attempts}:`, statusResult.status);
+
+                    // Update status message based on progress
+                    if (statusResult.results?.agentResults?.length > 0) {
+                        const completedAgents = statusResult.results.agentResults.length;
+                        setStatusMessage(`Analyzing with AI agents (${completedAgents} completed)...`);
+                    }
+
+                    // Check if processing is complete
+                    if (statusResult.status === 'ai_complete' || statusResult.status === 'completed') {
+                        // Map backend verdict to frontend format
+                        let verdictType: 'true' | 'false' | 'uncertain' | 'true_' | 'false_' | 'unclear' = 'uncertain';
+                        const aiVerdict = (statusResult.results?.aiVerdict || statusResult.results?.finalVerdict || 'uncertain').toLowerCase();
+
+                        // Handle both Prisma enum format (true_, false_, unclear) and legacy format (true, false, uncertain)
+                        if (aiVerdict === 'true' || aiVerdict === 'true_' || aiVerdict === 'verified') {
+                            verdictType = 'true';
+                        } else if (aiVerdict === 'false' || aiVerdict === 'false_' || aiVerdict === 'rejected') {
+                            verdictType = 'false';
+                        }
+
+                        // Generate explanation from agent results
+                        let explanation = "Analysis complete. ";
+                        if (statusResult.results?.agentResults && statusResult.results.agentResults.length > 0) {
+                            const agentSummaries = statusResult.results.agentResults
+                                .map((ar: any) => `${ar.agent}: ${ar.verdict} (${Math.round((ar.confidence || 0.5) * 100)}%)`)
+                                .join(', ');
+                            explanation += `Agent analysis: ${agentSummaries}`;
+                        } else {
+                            explanation += "Our AI has analyzed this claim based on multiple factors including source credibility, citation verification, and pattern analysis.";
+                        }
+
+                        setResponse({
+                            verdict: verdictType,
+                            confidence: Math.round((statusResult.results?.aiConfidence ?? 0.5) * 100),
+                            explanation
+                        });
+                        break;
+                    }
+
+                    // Check for voting status
+                    if (statusResult.status === 'voting') {
+                        setResponse({
+                            verdict: 'uncertain',
+                            confidence: Math.round((statusResult.results?.aiConfidence ?? 0.5) * 100),
+                            explanation: "This claim is now in community voting. The final verdict will be determined by community consensus."
+                        });
+                        break;
+                    }
+                } catch (pollError) {
+                    console.warn(`Polling attempt ${attempts} failed:`, pollError);
+                    // Continue polling on error
+                }
+            }
+
+            // If we exhausted all attempts
+            if (attempts >= maxAttempts && !response) {
+                setResponse({
+                    verdict: 'uncertain',
+                    confidence: 0,
+                    explanation: "Analysis is taking longer than expected. Please check back later for results."
+                });
+            }
 
         } catch (err: any) {
             console.error("Failed to submit claim:", err);
+            setResponse({
+                verdict: 'uncertain',
+                confidence: 0,
+                explanation: `Error: ${err.message || 'Failed to submit claim. Please check that the backend is running.'}`
+            });
         } finally {
             setSubmitting(false);
+            setStatusMessage("");
         }
     };
 
@@ -101,12 +224,69 @@ export default function SubmitClaim() {
                                 <span className="response-label">AI Analysis</span>
                             </div>
                             <div className={`verdict-badge ${response.verdict}`}>
-                                {response.verdict === 'true' && '✓ Likely True'}
-                                {response.verdict === 'false' && '✗ Likely False'}
-                                {response.verdict === 'uncertain' && '? Uncertain'}
+                                {(response.verdict === 'true' || response.verdict === 'true_') && '✓ Likely True'}
+                                {(response.verdict === 'false' || response.verdict === 'false_') && '✗ Likely False'}
+                                {(response.verdict === 'uncertain' || response.verdict === 'unclear') && '? Uncertain'}
                                 <span className="confidence">({response.confidence}% confidence)</span>
                             </div>
-                            <p className="response-text">{response.explanation}</p>
+
+                            {/* Parse and display agent results if available */}
+                            {(() => {
+                                // Extract agent analysis from explanation
+                                const agentMatch = response.explanation.match(/Agent analysis: (.+)/);
+                                if (agentMatch) {
+                                    const agentData = agentMatch[1];
+                                    const agents = agentData.split(', ').map((item, index) => {
+                                        const parts = item.match(/([^:]+): ([^(]+) \((\d+)%\)/);
+                                        if (parts) {
+                                            return {
+                                                name: parts[1].replace(/_/g, ' '),
+                                                verdict: parts[2].trim().toLowerCase(),
+                                                confidence: parseInt(parts[3])
+                                            };
+                                        }
+                                        return null;
+                                    }).filter(Boolean);
+
+                                    if (agents.length > 0) {
+                                        return (
+                                            <div className="agent-analysis-section">
+                                                <div className="agent-analysis-title">Individual Agent Analysis</div>
+                                                <div className="agent-results-grid">
+                                                    {agents.map((agent: any, index: number) => {
+                                                        const confidenceLevel = agent.confidence >= 70 ? 'high' : agent.confidence >= 40 ? 'medium' : 'low';
+                                                        return (
+                                                            <div
+                                                                key={index}
+                                                                className="agent-result-card"
+                                                                style={{ '--index': index } as React.CSSProperties}
+                                                            >
+                                                                <div className="agent-result-header">
+                                                                    <div className="agent-name">{agent.name}</div>
+                                                                    <div className={`agent-verdict ${agent.verdict}`}>
+                                                                        {agent.verdict}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="agent-confidence-bar">
+                                                                    <div
+                                                                        className={`agent-confidence-fill ${confidenceLevel}`}
+                                                                        style={{ width: `${agent.confidence}%` }}
+                                                                    ></div>
+                                                                </div>
+                                                                <div className="agent-confidence-text">
+                                                                    {agent.confidence}% confidence
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                }
+                                return <p className="response-text">{response.explanation}</p>;
+                            })()}
+
                             <button className="new-claim-btn" onClick={resetChat}>
                                 Submit Another Claim
                             </button>
@@ -183,7 +363,11 @@ export default function SubmitClaim() {
                         />
 
                         <p className="input-hint">
-                            Press Enter to submit • Shift+Enter for new line
+                            {submitting && statusMessage ? (
+                                <span className="status-message">{statusMessage}</span>
+                            ) : (
+                                "Press Enter to submit • Shift+Enter for new line"
+                            )}
                         </p>
                     </div>
                 )}

@@ -12,6 +12,7 @@ import { socialEvidenceAgent } from './socialEvidenceAgent.js';
 import { mediaForensicsAgent } from './mediaForensicsAgent.js';
 import { propagationPatternAgent } from './patternAgent.js';
 import { aggregateAndScore } from './scoringAgent.js';
+import { scoreClaimSimple, ClaimMetadata as SimpleClaimMetadata } from './simpleScoring.js';
 import { routeToVoting } from './communityRoutingAgent.js';
 import ClaimRegistryABI from '../abis/ClaimRegistry.json' with { type: "json" };
 import VerificationMarketABI from '../abis/VerificationMarket.json' with { type: "json" };
@@ -36,6 +37,8 @@ interface ClaimInput {
   extractedUrls?: string[];
   mediaImages?: string[];
   mediaVideos?: string[];
+  onchainTxHash?: string | null;  // User-provided on-chain tx hash (if already registered)
+  claimHash?: string | null;       // User-provided claim hash
 }
 
 interface AgentResult {
@@ -44,6 +47,141 @@ interface AgentResult {
   confidence: number;
   flags: string[];
   rawResult: any;
+}
+
+// Normalization functions to map actual agent outputs to scoring agent expected interfaces
+// FIXED: Now properly interprets the 'verdict' field that agents return
+
+// Helper to convert verdict to a 0-1 score
+function verdictToScore(verdict: string | undefined, confidence: number = 0.5): number {
+  // 'true' = claim is credible/supported = high score (1.0)
+  // 'false' = claim is NOT credible/contradicted = low score (0.0)
+  // 'unclear' or undefined = neutral (0.5)
+  if (verdict === 'true' || verdict === 'TRUE') return 0.8 + (confidence * 0.2); // 0.8-1.0
+  if (verdict === 'false' || verdict === 'FALSE') return 0.2 - (confidence * 0.15); // 0.05-0.2
+  return 0.5;
+}
+
+function normalizeLogicOutput(raw: any): any {
+  // textForensicsAgent uses isConsistent/logicScore, but scoringAgent expects verdict/confidence/reasons/flags
+  if (!raw) return undefined;
+
+  // Priority: use explicit verdict, then derive from isConsistent/logicScore
+  let verdict = raw.verdict;
+  if (!verdict) {
+    verdict = raw.isConsistent === false ? 'false' :
+      raw.logicScore && raw.logicScore < 0.4 ? 'false' :
+        raw.logicScore && raw.logicScore > 0.7 ? 'true' : 'unclear';
+  }
+
+  return {
+    verdict: verdict,
+    confidence: raw.confidence ?? raw.logicScore ?? 0.5,
+    reasons: raw.explanation ? [raw.explanation] : [],
+    flags: raw.flaggedIssues || raw.logicalFallacies || []
+  };
+}
+
+function normalizeSourceCredibilityOutput(raw: any): any {
+  if (!raw) return undefined;
+
+  // FIXED: Use verdict to determine score, not just isCredible
+  const verdict = raw.verdict;
+  const confidence = raw.confidence ?? 0.5;
+
+  return {
+    sourceCredibilityScore: raw.sourceCredibilityScore ?? raw.credibilityScore ?? verdictToScore(verdict, confidence),
+    isCredible: raw.isCredible ?? (verdict === 'true' || verdict === 'TRUE'),
+    confidence: confidence,
+    domainReputations: raw.domainReputations || [],
+    flaggedIssues: raw.flaggedIssues || raw.flags || [],
+    explanation: raw.explanation || raw.summary || ''
+  };
+}
+
+function normalizeCitationOutput(raw: any): any {
+  if (!raw) return undefined;
+
+  // FIXED: Use verdict to determine citation score
+  const verdict = raw.verdict;
+  const confidence = raw.confidence ?? 0.5;
+
+  return {
+    citationScore: raw.citationScore ?? raw.evidenceScore ?? verdictToScore(verdict, confidence),
+    confidence: confidence,
+    supportingSources: raw.supportingSources || [],
+    contradictingSources: raw.contradictingSources || [],
+    flags: raw.flags || [],
+    explanation: raw.explanation || raw.summary || ''
+  };
+}
+
+function normalizeSocialEvidenceOutput(raw: any): any {
+  if (!raw) return undefined;
+
+  // FIXED: Use verdict to determine social score
+  const verdict = raw.verdict;
+  const confidence = raw.confidence ?? 0.5;
+
+  return {
+    socialScore: raw.socialScore ?? verdictToScore(verdict, confidence),
+    confidence: confidence,
+    summary: raw.summary || raw.explanation || '',
+    authoritativeAccounts: raw.authoritativeAccounts || [],
+    flags: raw.flags || []
+  };
+}
+
+function normalizeMediaForensicsOutput(raw: any): any {
+  if (!raw) return undefined;
+
+  // FIXED: Use verdict to determine risk score
+  // For media: FALSE verdict = high risk, TRUE verdict = low risk
+  const verdict = raw.verdict;
+  const confidence = raw.confidence ?? 0.5;
+
+  let riskScore = raw.overallRiskScore ?? raw.riskScore;
+  if (riskScore === undefined) {
+    // If verdict is FALSE (claim has manipulated media), risk is HIGH
+    // If verdict is TRUE (media is authentic), risk is LOW
+    riskScore = verdict === 'false' || verdict === 'FALSE' ? 70 + (confidence * 20) :
+      verdict === 'true' || verdict === 'TRUE' ? 20 - (confidence * 15) : 50;
+  }
+
+  return {
+    overallRiskScore: riskScore,
+    confidence: confidence,
+    mediaAnalysis: raw.mediaAnalysis || [],
+    summary: raw.summary || raw.explanation || ''
+  };
+}
+
+function normalizePropagationOutput(raw: any): any {
+  if (!raw) return undefined;
+
+  // FIXED: Use verdict to determine suspicion score
+  // For propagation: FALSE verdict = suspicious patterns = high suspicion
+  const verdict = raw.verdict;
+  const confidence = raw.confidence ?? 0.5;
+
+  let suspicionScore = raw.suspicionScore;
+  if (suspicionScore === undefined) {
+    suspicionScore = verdict === 'false' || verdict === 'FALSE' ? 60 + (confidence * 30) :
+      verdict === 'true' || verdict === 'TRUE' ? 20 - (confidence * 15) : 50;
+  }
+
+  return {
+    suspicionScore: suspicionScore,
+    confidence: confidence,
+    flags: raw.flags || [],
+    summary: raw.summary || raw.explanation || '',
+    propagationMetrics: raw.propagationMetrics || {
+      totalPosts: 0,
+      uniqueAuthors: 0,
+      platforms: [],
+      burstActivity: false
+    }
+  };
 }
 
 export class ResultOrchestrator {
@@ -124,35 +262,22 @@ export class ResultOrchestrator {
 
     console.log(`✅ Claim created in DB: ID = ${claim.id}, UUID = ${claimUuid} `);
 
-    // Compute claim hash and register on-chain
-    const claimHash = ethers.keccak256(
+    // Handle on-chain registration
+    // If user provided txHash (registered from their wallet), use that
+    // Otherwise, log that user-initiated registration is expected
+    const claimHash = input.claimHash || ethers.keccak256(
       ethers.toUtf8Bytes(input.normalizedText)
     );
 
-    try {
-      const submitterUser = await prisma.user.findUnique({
-        where: { id: input.submitterId }
-      });
+    if (input.onchainTxHash) {
+      // User already registered on-chain from their wallet - store the info
+      console.log(`⛓️  User-initiated on-chain registration detected: TX = ${input.onchainTxHash}`);
 
-      if (!submitterUser?.wallet_address) {
-        throw new Error('Submitter wallet address not found');
-      }
-
-      const tx = await this.claimRegistryContract.registerClaim(
-        claim.id,
-        claimHash,
-        submitterUser.wallet_address
-      );
-
-      const receipt = await tx.wait();
-      console.log(`⛓️  Claim registered on - chain: TX = ${receipt.hash} `);
-
-      // Update claim with on-chain data
       await prisma.claim.update({
         where: { id: claim.id },
         data: {
           claim_hash: claimHash,
-          onchain_claim_tx: receipt.hash,
+          onchain_claim_tx: input.onchainTxHash,
           updated_at: new Date()
         }
       });
@@ -161,20 +286,26 @@ export class ResultOrchestrator {
       await prisma.onchainEvent.create({
         data: {
           claim_id: claim.id,
-          tx_hash: receipt.hash,
+          tx_hash: input.onchainTxHash,
           event_type: OnchainEventType.claim_registered,
           payload: JSON.stringify({
             claimId: claim.id,
             claimHash,
-            submitter: submitterUser.wallet_address
+            userInitiated: true // Flag that this was user-initiated
           }),
           created_at: new Date()
         }
       });
-
-    } catch (error) {
-      console.error('❌ On-chain registration failed:', error);
-      // Continue with off-chain processing even if on-chain fails
+    } else {
+      // No on-chain tx provided - store the hash but note it's not on-chain yet
+      console.log(`ℹ️  No on-chain registration provided - claim will be processed off-chain only`);
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: {
+          claim_hash: claimHash,
+          updated_at: new Date()
+        }
+      });
     }
 
     return claim.id;
@@ -331,24 +462,32 @@ export class ResultOrchestrator {
       try {
         const rawResult = JSON.parse(ar.raw_result || '{}');
 
+        // CRITICAL FIX: Merge DB-level verdict and confidence into rawResult
+        // The verdict is stored separately in ar.verdict, not in raw_result JSON
+        const enrichedResult = {
+          ...rawResult,
+          verdict: ar.verdict || rawResult.verdict,  // DB verdict takes precedence
+          confidence: ar.confidence ?? rawResult.confidence ?? 0.5
+        };
+
         switch (ar.agent_name) {
           case 'logic_consistency':
-            agentOutputs.logic = rawResult;
+            agentOutputs.logic = normalizeLogicOutput(enrichedResult);
             break;
           case 'citation_evidence':
-            agentOutputs.citation = rawResult;
+            agentOutputs.citation = normalizeCitationOutput(enrichedResult);
             break;
           case 'source_credibility':
-            agentOutputs.sourceCredibility = rawResult;
+            agentOutputs.sourceCredibility = normalizeSourceCredibilityOutput(enrichedResult);
             break;
           case 'social_evidence':
-            agentOutputs.socialEvidence = rawResult;
+            agentOutputs.socialEvidence = normalizeSocialEvidenceOutput(enrichedResult);
             break;
           case 'media_forensics':
-            agentOutputs.mediaForensics = rawResult;
+            agentOutputs.mediaForensics = normalizeMediaForensicsOutput(enrichedResult);
             break;
           case 'propagation_pattern':
-            agentOutputs.propagation = rawResult;
+            agentOutputs.propagation = normalizePropagationOutput(enrichedResult);
             break;
         }
       } catch (error) {
@@ -356,8 +495,33 @@ export class ResultOrchestrator {
       }
     }
 
-    // Run aggregation
-    const aggregationResult = await aggregateAndScore(claimMetadata, agentOutputs);
+    // Run aggregation using the NEW SIMPLE SCORING
+    // Pass agent results directly - no complex normalization needed!
+
+    // DEBUG: Log what we're getting from DB
+    console.log(`\n🔍 [DEBUG] Agent results from DB (${agentResults.length} total):`);
+    for (const ar of agentResults) {
+      console.log(`  - ${ar.agent_name}: verdict="${ar.verdict}" (type: ${typeof ar.verdict}), conf=${ar.confidence}`);
+    }
+
+    const simpleAgentResults = agentResults.map(ar => {
+      const mappedVerdict = ar.verdict ?? 'UNCLEAR';
+      console.log(`  → Mapping ${ar.agent_name}: "${ar.verdict}" → "${mappedVerdict}"`);
+      return {
+        agent_name: ar.agent_name,
+        verdict: mappedVerdict,  // FIXED: Use ?? not || so 'FALSE' doesn't become 'UNCLEAR'!
+        confidence: ar.confidence ?? 0.5   // Handle null confidence
+      };
+    });
+    console.log(`🔍 [DEBUG] Mapped agent results for scoring:`);
+    for (const ar of simpleAgentResults) {
+      console.log(`  - ${ar.agent_name}: verdict="${ar.verdict}", conf=${ar.confidence}`);
+    }
+
+    const aggregationResult = await scoreClaimSimple(
+      { claimId: claim.id.toString(), normalizedText: claim.normalized_text || '', platforms: claim.platform ? [claim.platform] : [] },
+      simpleAgentResults
+    );
 
     // Update claim with AI verdict
     await prisma.claim.update({

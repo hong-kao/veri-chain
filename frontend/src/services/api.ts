@@ -198,6 +198,8 @@ export const api = {
         images?: File[];
         videos?: File[];
         submitterId?: number;
+        onchainTxHash?: string;
+        claimHash?: string;
     }): Promise<ClaimSubmitResponse> {
         const formData = new FormData();
 
@@ -208,6 +210,8 @@ export const api = {
         if (data.platformUrl) formData.append('platformUrl', data.platformUrl);
         if (data.platformAuthor) formData.append('platformAuthor', data.platformAuthor);
         if (data.submitterId) formData.append('submitterId', data.submitterId.toString());
+        if (data.onchainTxHash) formData.append('onchainTxHash', data.onchainTxHash);
+        if (data.claimHash) formData.append('claimHash', data.claimHash);
 
         // Append image files
         if (data.images && data.images.length > 0) {

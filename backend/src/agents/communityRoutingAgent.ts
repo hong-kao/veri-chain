@@ -91,8 +91,8 @@ function determineRoute(input: RoutingInput): RouteDecision {
     const redFlagCount = countRedFlags(agentFlags);
 
     // HIGH CONFIDENCE AI → AI ONLY
-    // Confidence ≥ 0.85 and verdict is clear (TRUE or FALSE, not UNCLEAR)
-    if (aiVerdict.confidence >= 0.85 && aiVerdict.verdict !== 'UNCLEAR' && redFlagCount <= 1) {
+    // Confidence ≥ 0.70 and verdict is clear (TRUE or FALSE, not UNCLEAR)
+    if (aiVerdict.confidence >= 0.70 && aiVerdict.verdict !== 'UNCLEAR' && redFlagCount <= 1) {
         return 'ai_only';
     }
 
@@ -104,9 +104,9 @@ function determineRoute(input: RoutingInput): RouteDecision {
     }
 
     // MEDIUM CONFIDENCE OR CONFLICTING SIGNALS → COMMUNITY VOTE
-    // Confidence 0.4-0.85, or UNCLEAR verdict, or multiple red flags
+    // Confidence 0.4-0.70, or UNCLEAR verdict, or multiple red flags
     if (
-        aiVerdict.confidence < 0.85 ||
+        aiVerdict.confidence < 0.70 ||
         aiVerdict.verdict === 'UNCLEAR' ||
         redFlagCount >= 2
     ) {
@@ -244,7 +244,7 @@ function generateReasoning(input: RoutingInput, route: RouteDecision, urgency: U
     // community_vote
     const reasons: string[] = [];
 
-    if (aiVerdict.confidence < 0.85) {
+    if (aiVerdict.confidence < 0.70) {
         reasons.push(`moderate AI confidence (${(aiVerdict.confidence * 100).toFixed(0)}%)`);
     }
 
