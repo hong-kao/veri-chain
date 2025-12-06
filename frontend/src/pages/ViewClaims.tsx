@@ -176,7 +176,7 @@ export default function ViewClaims() {
                     {loading ? (
                         <div className="loading-state">
                             <div className="loader-spinner"></div>
-                            <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '1rem' }}>Loading community feed...</p>
+                            <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '1rem' }}>Loading claims feed...</p>
                         </div>
                     ) : filteredClaims.length === 0 ? (
                         <div className="empty-state">
