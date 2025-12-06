@@ -153,44 +153,7 @@ export default function ClaimDetailsModal({
                         </div>
                     )}
 
-                    {/* Voting Section - Always show stats */}
-                    {showVoting && (
-                        <div className="claim-detail-section voting-section">
-                            <h3 className="claim-detail-heading">Community Voting</h3>
-                            <div className="voting-stats">
-                                <span className="vote-stat upvote">▲ {claim.upvotes || 0} upvotes</span>
-                                <span className="vote-stat downvote">▼ {claim.downvotes || 0} downvotes</span>
-                            </div>
-                            {/* Vote buttons - show for everyone on active claims */}
-                            {isClaimActive ? (
-                                <>
-                                    <div className="modal-voting-buttons">
-                                        <button
-                                            className={`vote-btn-large upvote ${isOwnClaim ? 'disabled' : ''}`}
-                                            onClick={() => !isOwnClaim && onVote && onVote(claim.id, 'up')}
-                                            disabled={isOwnClaim}
-                                        >
-                                            ▲ Upvote
-                                        </button>
-                                        <button
-                                            className={`vote-btn-large downvote ${isOwnClaim ? 'disabled' : ''}`}
-                                            onClick={() => !isOwnClaim && onVote && onVote(claim.id, 'down')}
-                                            disabled={isOwnClaim}
-                                        >
-                                            ▼ Downvote
-                                        </button>
-                                    </div>
-                                    {isOwnClaim && (
-                                        <p className="author-note">Authors can't vote on their own claims 😉</p>
-                                    )}
-                                </>
-                            ) : (
-                                <p className="voting-disabled-message">
-                                    Voting is closed for this claim.
-                                </p>
-                            )}
-                        </div>
-                    )}
+
                 </div>
 
                 <div className="modal-footer">

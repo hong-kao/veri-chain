@@ -217,7 +217,11 @@ router.get('/', async (req, res) => {
                 statement: claim.normalized_text,
                 category: claim.claim_type,
                 verdict: claim.final_verdict || claim.ai_verdict,
-                confidence: claim.ai_confidence ? Math.round(claim.ai_confidence * 100) : null,
+                confidence: claim.ai_confidence
+                    ? (claim.ai_confidence > 1
+                        ? Math.round(claim.ai_confidence)  // Already a percentage (0-100)
+                        : Math.round(claim.ai_confidence * 100))  // Convert from 0-1 to percentage
+                    : null,
                 status: claim.status,
                 submittedAt: claim.created_at,
                 resolvedAt: claim.updated_at,

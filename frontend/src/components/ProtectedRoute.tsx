@@ -1,13 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import TerminalLoader from './TerminalLoader';
+import Loader from './Loader';
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-    const { isConnected, isLoading, authType, walletAddress, token } = useAuth();
+    const { user, isLoading, isConnected, authType, token, walletAddress } = useAuth();
     const location = useLocation();
 
     console.log('🛡️ ProtectedRoute Check:', {
@@ -21,7 +21,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
     if (isLoading) {
         console.log('⏳ Loading auth state...');
-        return <TerminalLoader />;
+        return <Loader fullScreen text="Verifying session..." />;
     }
 
     if (!isConnected) {

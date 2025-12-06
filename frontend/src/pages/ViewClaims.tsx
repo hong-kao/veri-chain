@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import AppNav from "../components/AppNav";
 import ClaimDetailsModal from "../components/ClaimDetailsModal";
+import Loader from "../components/Loader";
 import api from "../services/api";
 import "../styles/AppPages.css";
 
@@ -175,9 +176,9 @@ export default function ViewClaims() {
                 <div className="community-feed">
                     {loading ? (
                         <div className="loading-state">
-                            <div className="loader-spinner"></div>
-                            <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '1rem' }}>Loading claims feed...</p>
+                            <Loader text="Loading claims feed..." />
                         </div>
+
                     ) : filteredClaims.length === 0 ? (
                         <div className="empty-state">
                             <div className="empty-state-icon">🔍</div>

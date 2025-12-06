@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IoSend, IoAdd, IoDocumentAttach, IoLink, IoClose } from "react-icons/io5";
-import TerminalLoader from '../components/TerminalLoader';
+import Loader from '../components/Loader';
 import { api } from '../services/api';
 import './ClaimsSubmit.css';
 
@@ -154,7 +154,7 @@ const ClaimsSubmit: React.FC = () => {
 
     return (
         <>
-            {isPageLoading && <TerminalLoader onComplete={handleLoaderComplete} />}
+            {isPageLoading && <Loader fullScreen text="Initializing secure channel..." />}
             <div className="ai-page-container" style={{ opacity: isPageLoading ? 0 : 1, transition: 'opacity 0.5s ease' }}>
                 {/* Main Terminal Window */}
                 <main className="ai-main-card">
