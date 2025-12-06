@@ -23,7 +23,7 @@ export default function SubmitClaim() {
         explanation: string;
     } | null>(null);
 
-    const randomQuote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+    const [randomQuote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

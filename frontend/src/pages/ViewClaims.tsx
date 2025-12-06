@@ -99,8 +99,8 @@ export default function ViewClaims() {
 
             <div className="app-container">
                 <div className="app-header">
-                    <h1 className="app-title">Your Claims</h1>
-                    <p className="app-subtitle">View and vote on claims</p>
+                    <h1 className="app-title">All Claims</h1>
+                    <p className="app-subtitle">Browse and vote on community claims</p>
                 </div>
 
                 {/* Wallet Required Info */}
@@ -147,13 +147,13 @@ export default function ViewClaims() {
                         <div className="empty-state-title">No claims found</div>
                         <p className="empty-state-text">
                             {filter === 'active'
-                                ? "You don't have any active claims"
+                                ? "There are no active claims at the moment"
                                 : filter === 'completed'
-                                    ? "You don't have any completed claims"
-                                    : "You haven't submitted any claims yet"}
+                                    ? "There are no completed claims yet"
+                                    : "No claims have been submitted yet"}
                         </p>
                         <Link to="/submit">
-                            <button className="submit-btn">Submit Your First Claim</button>
+                            <button className="submit-btn">Submit the First Claim</button>
                         </Link>
                     </div>
                 ) : (
