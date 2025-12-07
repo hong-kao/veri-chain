@@ -264,17 +264,14 @@ router.get('/:id/status', async (req, res) => {
 
         // Determine current status
         let status = 'processing';
-        let aiVerdict = null;
-        let finalVerdict = null;
-        let confidence = null;
+        let aiVerdict = claim.ai_verdict || null;
+        let finalVerdict = claim.final_verdict || null;
+        let confidence = claim.ai_confidence ?? null;
 
         if (claim.final_verdict) {
             status = 'completed';
-            finalVerdict = claim.final_verdict;
         } else if (claim.ai_verdict) {
             status = claim.voting_sessions.length > 0 ? 'voting' : 'ai_complete';
-            aiVerdict = claim.ai_verdict;
-            confidence = claim.ai_confidence;
         }
 
         res.json({
@@ -399,16 +396,49 @@ async function processClaimBackground(claimId: number, orch: ResultOrchestrator)
     } catch (error: any) {
         console.error(`❌ Background processing failed for claim ${claimId}:`, error);
 
-        // Mark claim as failed in DB
+        // Only mark claim as failed if no verdict was computed yet
+        // Don't overwrite a valid verdict just because on-chain publishing failed
         try {
-            await prisma.claim.update({
+            const existingClaim = await prisma.claim.findUnique({
                 where: { id: claimId },
-                data: {
-                    ai_verdict: 'unclear',
-                    ai_confidence: 0,
-                    final_verdict: 'unclear'
-                }
+                select: { ai_verdict: true, ai_confidence: true, final_verdict: true }
             });
+
+            // Only set to unclear if no verdict exists at all
+            // IMPORTANT: UNCLEAR IS a valid verdict! Only overwrite if null/undefined
+            const hasValidVerdict = existingClaim?.ai_verdict &&
+                existingClaim.ai_confidence !== null &&
+                existingClaim.ai_confidence !== undefined;
+
+            if (!hasValidVerdict) {
+                await prisma.claim.update({
+                    where: { id: claimId },
+                    data: {
+                        ai_verdict: 'unclear',
+                        ai_confidence: 0,
+                        final_verdict: 'unclear',
+                        final_confidence: 0
+                    }
+                });
+                console.log(`  → Marked claim ${claimId} as unclear (no valid verdict was computed)`);
+            } else {
+                // Verdict was computed successfully, just log the error
+                console.log(`  → Claim ${claimId} already has verdict: ${existingClaim.ai_verdict} (${Math.round((existingClaim.ai_confidence || 0) * 100)}% confidence)`);
+                console.log(`  → On-chain publishing failed but verdict is preserved`);
+
+                // If final_verdict wasn't set, copy from ai_verdict INCLUDING the confidence
+                if (!existingClaim.final_verdict) {
+                    await prisma.claim.update({
+                        where: { id: claimId },
+                        data: {
+                            final_verdict: existingClaim.ai_verdict,
+                            final_confidence: existingClaim.ai_confidence,  // FIXED: Also copy confidence!
+                            status: 'resolved'
+                        }
+                    });
+                    console.log(`  → Set final_verdict from ai_verdict (confidence: ${Math.round((existingClaim.ai_confidence || 0) * 100)}%)`);
+                }
+            }
         } catch (dbError) {
             console.error('Failed to update claim with error status:', dbError);
         }

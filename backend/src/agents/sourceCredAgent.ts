@@ -751,6 +751,7 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
     // DIRECTLY CALL TOOLS - don't rely on LLM
 
     const results = [];
+    const scrapedContentResults: Array<{ url: string; content: string; metadata: any }> = [];
 
     // 1. Analyze domain reputation for each URL
     for (const url of state.urls.slice(0, 3)) { // Limit to 3 URLs to save costs
@@ -763,7 +764,63 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
         results.push(`Domain ${domain}: ${domainResult}`);
     }
 
-    // 2. Check fact-checking status
+    // 2. SCRAPE URLs to get actual content for deeper analysis
+    // Limit to first 2 URLs to balance thoroughness with performance
+    for (const url of state.urls.slice(0, 2)) {
+        console.log(`✓ Scraping URL for content analysis: ${url}`);
+        try {
+            const scrapeResultStr = await webScraper.invoke({
+                url,
+                extractType: 'full'
+            });
+
+            const scrapeResult = JSON.parse(scrapeResultStr);
+
+            if (scrapeResult.success && scrapeResult.data) {
+                const scraped = scrapeResult.data;
+                scrapedContentResults.push({
+                    url,
+                    content: scraped.content || '',
+                    metadata: {
+                        title: scraped.title,
+                        author: scraped.author,
+                        publishDate: scraped.publishDate,
+                        wordCount: scraped.wordCount
+                    }
+                });
+
+                // Analyze publication quality with actual scraped content
+                console.log(`✓ Analyzing publication quality for: ${url}`);
+                const qualityResult = await analyzePublicationQuality.invoke({
+                    url,
+                    content: scraped.content || '',
+                    metadata: {
+                        author: scraped.author,
+                        publishDate: scraped.publishDate,
+                        wordCount: scraped.wordCount || 0
+                    }
+                });
+                results.push(`Publication Quality (${url}): ${qualityResult}`);
+
+                // Check author credibility if author was found
+                if (scraped.author) {
+                    console.log(`✓ Checking author credibility: ${scraped.author}`);
+                    const authorResult = await checkAuthorCredibility.invoke({
+                        authorName: scraped.author,
+                        domain: extractDomain(url),
+                        content: scraped.content.substring(0, 2000) // Limit content length
+                    });
+                    results.push(`Author Credibility (${scraped.author}): ${authorResult}`);
+                }
+            } else {
+                console.log(`  ⚠️ Scraping failed for ${url}: ${scrapeResult.error}`);
+            }
+        } catch (scrapeError: any) {
+            console.error(`  ❌ Scraping error for ${url}:`, scrapeError.message);
+        }
+    }
+
+    // 3. Check fact-checking status
     console.log('✓ Checking fact-check status...');
     const factCheckResult = await checkFactCheckingStatus.invoke({
         claim: state.claim,
@@ -771,12 +828,12 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
     });
     results.push(`Fact-Check Status: ${factCheckResult}`);
 
-    // 3. Search for source reputation
+    // 4. Search for source reputation (only if we have URLs)
     if (state.urls.length > 0) {
         const domain = extractDomain(state.urls[0]);
         console.log(`✓ Searching for domain reputation: ${domain}`);
         const searchResult = await serpApiSearch.invoke({
-            query: `${domain} reliability fact check`,
+            query: `${domain} reliability credibility`,
             count: 3
         });
         results.push(`Reputation Search: ${searchResult}`);
@@ -788,8 +845,12 @@ async function analyzeSourceCredibility(state: typeof SourceCredibilityState.Sta
 
 ${results.join('\n\n')}
 
+Scraped Content Summary:
+${scrapedContentResults.map(s => `- ${s.url}: ${s.metadata.wordCount} words, author: ${s.metadata.author || 'unknown'}`).join('\n')}
+
 Now synthesize the credibility assessment.`)
-        ]
+        ],
+        scrapedContent: scrapedContentResults
     };
 }
 
@@ -800,6 +861,15 @@ async function processToolResults(state: typeof SourceCredibilityState.State) {
 
 async function extractVerdict(state: typeof SourceCredibilityState.State) {
     const verdictPrompt = `Based on all your analysis and tool results, provide a final source credibility verdict.
+
+IMPORTANT: Source credibility is about the QUALITY of sources, not whether the claim is TRUE or FALSE.
+- A low-credibility source (like Twitter) can still make TRUE claims
+- A high-credibility source can still make FALSE claims
+- Focus on: domain reputation, author credentials, publication quality, fact-check status
+
+If no URLs are provided (e.g., just a social media claim text), default to:
+- sourceCredibilityScore: 0.5 (neutral - we can't assess credibility without sources)
+- isCredible: true (don't penalize claims just because they lack cited sources)
 
 Return ONLY valid JSON in this EXACT format:
 {
@@ -839,7 +909,10 @@ Return ONLY valid JSON in this EXACT format:
 Scoring guide:
 - sourceCredibilityScore: 0-1 (0=completely unreliable, 1=highly credible)
 - confidence: 0-1 (how confident you are)
-- isCredible: true/false (overall verdict: true if score >= 0.6)
+- isCredible: true if score >= 0.5 (DEFAULT to true for neutral/unclear cases)
+
+IMPORTANT: If there's not enough information to judge credibility, default to isCredible=true with moderate confidence.
+Only set isCredible=false if there's CLEAR evidence of low credibility (known misinformation sites, suspicious patterns).
 
 Be precise and objective. No preamble, just JSON.`;
 
@@ -860,7 +933,7 @@ Be precise and objective. No preamble, just JSON.`;
 
         return {
             sourceCredibilityScore: verdict.sourceCredibilityScore ?? 0.5,
-            isCredible: verdict.isCredible ?? true,
+            isCredible: verdict.isCredible ?? true,  // Default to true (UNCLEAR), not false
             confidence: verdict.confidence ?? 0.5,
             domainReputations: verdict.domainReputations || [],
             authorCredibility: verdict.authorCredibility || [],
@@ -873,7 +946,7 @@ Be precise and objective. No preamble, just JSON.`;
         console.error("Failed to parse source credibility verdict:", error);
         return {
             sourceCredibilityScore: 0.5,
-            isCredible: false,
+            isCredible: true,  // Default to true (UNCLEAR), not false
             confidence: 0.3,
             flaggedIssues: ["Failed to parse verdict"],
             explanation: "Error processing source credibility analysis"

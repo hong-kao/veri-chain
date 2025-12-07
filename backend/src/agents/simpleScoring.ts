@@ -49,13 +49,14 @@ export interface ScoringResult {
 }
 
 // Agent weights - how much each agent's opinion matters
+// IMPORTANT: citation_evidence is most important because it checks fact-check sites!
 const AGENT_WEIGHTS: Record<string, number> = {
-    'logic_consistency': 0.30,      // Very important - logical analysis
-    'citation_evidence': 0.30,      // Very important - factual evidence
-    'source_credibility': 0.05,     // Less important - just source quality, not claim truth
-    'social_evidence': 0.15,        // Somewhat important - social signals
-    'media_forensics': 0.10,        // Somewhat important - media manipulation
-    'propagation_pattern': 0.10,    // Somewhat important - spread patterns
+    'citation_evidence': 0.40,      // HIGHEST - checks fact-check sites, finds real evidence
+    'logic_consistency': 0.20,      // Medium - only checks internal logic, not factual accuracy
+    'source_credibility': 0.05,     // Low - just source quality, not claim truth
+    'social_evidence': 0.15,        // Medium - social signals can be misleading
+    'media_forensics': 0.10,        // Medium - media manipulation detection
+    'propagation_pattern': 0.10,    // Medium - spread patterns
 };
 
 /**
@@ -130,6 +131,7 @@ function determineVerdict(score: number): 'TRUE' | 'FALSE' | 'UNCLEAR' {
 
 /**
  * Calculate confidence based on agent confidences and decisiveness of score
+ * Less aggressive: caps at 95%, blends factors instead of taking max
  */
 function calculateConfidence(score: number, verdicts: AgentVerdict[]): number {
     if (verdicts.length === 0) return 0.5;
@@ -147,14 +149,12 @@ function calculateConfidence(score: number, verdicts: AgentVerdict[]): number {
     // How decisive is the verdict? (far from 50)
     const decisiveness = Math.abs(score - 50) / 50;  // 0-1
 
-    // Use the HIGHER of avg agent confidence or decisiveness
-    // This ensures we don't undercount confident agents
-    const baseConfidence = Math.max(avgConfidence, decisiveness);
+    // Blend average confidence with decisiveness (60% avgConf, 40% decisiveness)
+    // This gives more weight to actual agent confidence levels
+    const blendedConfidence = avgConfidence * 0.6 + decisiveness * 0.4;
 
-    // If we have strong agreement (decisive), boost confidence
-    const agreementBonus = decisiveness > 0.3 ? 0.15 : 0;
-
-    const finalConfidence = Math.min(1.0, baseConfidence + agreementBonus);
+    // Cap at 95% - never claim absolute certainty
+    const finalConfidence = Math.min(0.95, blendedConfidence);
 
     console.log(`[Confidence] score=${score.toFixed(1)}, avgConf=${avgConfidence.toFixed(2)}, decisiveness=${decisiveness.toFixed(2)}, final=${finalConfidence.toFixed(2)}`);
 

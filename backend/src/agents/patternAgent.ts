@@ -277,9 +277,9 @@ async function extractVerdict(state: typeof PropagationPatternState.State) {
     if (!lastMessage || !lastMessage.content) {
         return {
             suspicionScore: 0.0,
-            confidence: 0.3,
+            confidence: 0.5, // Higher confidence that there's simply no data
             flags: ["no_data"],
-            summary: "No propagation data available for analysis",
+            summary: "No social media propagation data available. This is neutral - the claim's spread pattern could not be analyzed due to limited data.",
             suspiciousAccounts: [],
             propagationMetrics: {
                 totalPosts: 0,
@@ -295,13 +295,78 @@ async function extractVerdict(state: typeof PropagationPatternState.State) {
     try {
         const content = typeof lastMessage.content === 'string' ? lastMessage.content : JSON.stringify(lastMessage.content);
 
-        // Try to parse pattern analysis from the message
-        const jsonMatch = content.match(/\{[\s\S]*?\}(?=\s*$)/);
-        if (!jsonMatch) {
-            throw new Error('No JSON found in analysis results');
+        // Check for "no posts provided" message
+        if (content.includes('No social posts provided') || content.includes('Cannot analyze propagation without data')) {
+            return {
+                suspicionScore: 0.0,
+                confidence: 0.5, // Neutral confidence - we simply don't have data
+                flags: ["insufficient_data"],
+                summary: "Propagation pattern analysis was not possible due to insufficient social media data. This does not indicate whether the claim is true or false.",
+                suspiciousAccounts: [],
+                propagationMetrics: {
+                    totalPosts: 0,
+                    uniqueAuthors: 0,
+                    timeSpan: 0,
+                    avgEngagement: 0,
+                    platforms: [],
+                    burstActivity: false
+                }
+            };
         }
 
-        const analysis = JSON.parse(jsonMatch[0]);
+        // Try to find and parse JSON in the message
+        // First try to find complete JSON block
+        let analysis: any = null;
+
+        // Try pattern: {...} at end of string
+        let jsonMatch = content.match(/\{[\s\S]*\}(?=\s*$)/);
+        if (jsonMatch) {
+            try {
+                analysis = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+                // Try nested pattern
+            }
+        }
+
+        // Try pattern: "Pattern analysis complete: {...}"
+        if (!analysis) {
+            const colonMatch = content.match(/Pattern analysis complete:\s*(\{[\s\S]*\})$/);
+            if (colonMatch) {
+                try {
+                    analysis = JSON.parse(colonMatch[1]);
+                } catch (e) {
+                    // Fallback
+                }
+            }
+        }
+
+        // Try to extract just the first valid JSON object
+        if (!analysis) {
+            const firstBrace = content.indexOf('{');
+            if (firstBrace !== -1) {
+                let braceCount = 0;
+                let endIndex = -1;
+                for (let i = firstBrace; i < content.length; i++) {
+                    if (content[i] === '{') braceCount++;
+                    if (content[i] === '}') braceCount--;
+                    if (braceCount === 0) {
+                        endIndex = i + 1;
+                        break;
+                    }
+                }
+                if (endIndex !== -1) {
+                    try {
+                        analysis = JSON.parse(content.substring(firstBrace, endIndex));
+                    } catch (e) {
+                        // Final fallback
+                    }
+                }
+            }
+        }
+
+        if (!analysis) {
+            throw new Error('Could not parse JSON from analysis results');
+        }
 
         // Calculate suspicion score based on detected patterns
         const patterns = analysis.detectedPatterns || [];
@@ -329,11 +394,21 @@ async function extractVerdict(state: typeof PropagationPatternState.State) {
             metrics.totalPosts > 10 ? 0.6 :
                 metrics.totalPosts > 0 ? 0.4 : 0.3;
 
+        // Build meaningful summary
+        let summary = '';
+        if (metrics.totalPosts === 0) {
+            summary = 'No social posts analyzed. Propagation pattern is unknown.';
+        } else if (patterns.length === 0) {
+            summary = `Analyzed ${metrics.totalPosts} posts - no suspicious propagation patterns detected. Content appears to be spreading organically.`;
+        } else {
+            summary = `Analyzed ${metrics.totalPosts} posts - found ${patterns.length} suspicious pattern(s): ${patterns.slice(0, 3).join(', ')}. Suspicion level: ${analysisData.suspicionLevel || 'medium'}.`;
+        }
+
         return {
             suspicionScore,
             confidence: dataConfidence,
             flags: patterns,
-            summary: `Analysis of ${metrics.totalPosts || 0} posts found ${patterns.length} suspicious pattern(s). Suspicion level: ${analysisData.suspicionLevel || 'unknown'}.`,
+            summary,
             suspiciousAccounts: [],
             propagationMetrics: {
                 totalPosts: metrics.totalPosts || 0,
@@ -350,9 +425,9 @@ async function extractVerdict(state: typeof PropagationPatternState.State) {
         console.error("Failed to parse propagation analysis:", error.message);
         return {
             suspicionScore: 0.0,
-            confidence: 0.3,
-            flags: ["analysis_error"],
-            summary: "Error processing propagation analysis",
+            confidence: 0.4, // Moderate confidence - we tried but couldn't analyze
+            flags: ["analysis_incomplete"],
+            summary: "Propagation pattern analysis completed but results could not be fully processed. No suspicious patterns were conclusively detected.",
             suspiciousAccounts: [],
             propagationMetrics: {
                 totalPosts: 0,

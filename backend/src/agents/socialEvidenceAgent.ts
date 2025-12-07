@@ -324,18 +324,63 @@ async function analyzeSocialEvidence(state: typeof SocialEvidenceState.State) {
 
     const results = [];
 
-    // 1. Search for social media posts
+    // 1. Search for social media posts via Reddit scraping
     console.log('✓ Searching social media via Reddit scraping...');
-    const redditResult = await scrapeReddit.invoke({
+    const redditResultStr = await scrapeReddit.invoke({
         query: state.claim,
         limit: 5
     });
-    results.push(`Reddit Evidence: ${redditResult}`);
+    results.push(`Reddit Evidence: ${redditResultStr}`);
 
-    // 2. Analyze sentiment
-    console.log('✓ Analyzing sentiment...');
+    // 2. Parse Reddit results to extract usable data for sentiment analysis
+    let parsedPosts: Array<{ text: string; score?: number; engagement?: any }> = [];
+    try {
+        const redditData = JSON.parse(redditResultStr);
+
+        // If we got content from Reddit scraping, create synthetic posts for sentiment analysis
+        if (redditData.contentSnippet && redditData.wordCount > 50) {
+            // Create a representative post from the scraped content
+            parsedPosts.push({
+                text: redditData.contentSnippet || '',
+                score: redditData.wordCount, // Use word count as a proxy for engagement
+                engagement: {
+                    positiveIndicators: redditData.positiveIndicators || 0,
+                    negativeIndicators: redditData.negativeIndicators || 0,
+                    skepticalIndicators: redditData.skepticalIndicators || 0
+                }
+            });
+
+            // Add aggregated sentiment as another data point
+            if (redditData.aggregatedSentiment) {
+                parsedPosts.push({
+                    text: `Reddit community sentiment is ${redditData.aggregatedSentiment} about this topic`,
+                    score: 100,
+                    engagement: { sentiment: redditData.aggregatedSentiment }
+                });
+            }
+        }
+
+        // If Reddit scrape failed or returned minimal data, add a note
+        if (redditData.error || parsedPosts.length === 0) {
+            parsedPosts.push({
+                text: 'Limited social evidence available - no clear community discussion found',
+                score: 0,
+                engagement: null
+            });
+        }
+    } catch (e) {
+        console.error('Failed to parse Reddit results:', e);
+        parsedPosts.push({
+            text: 'Social evidence collection failed',
+            score: 0,
+            engagement: null
+        });
+    }
+
+    // 3. Analyze sentiment with the ACTUAL parsed posts
+    console.log(`✓ Analyzing sentiment on ${parsedPosts.length} items...`);
     const sentimentResult = await analyzeSocialSentiment.invoke({
-        posts: [] // Will use the results from above
+        posts: parsedPosts
     });
     results.push(`Sentiment Analysis: ${sentimentResult}`);
 
@@ -357,48 +402,53 @@ async function processToolResults(state: typeof SocialEvidenceState.State) {
 async function extractVerdict(state: typeof SocialEvidenceState.State) {
     const verdictPrompt = `Based on all social media evidence you've gathered, provide a final social evidence verdict.
 
-            Return ONLY valid JSON in this EXACT format:
-            {
-            "socialScore": 0.65,
-            "confidence": 0.75,
-            "overallSentiment": {
-                "consensus": "skeptical",
-                "confidence": 0.7,
-                "distribution": {
-                "supportive": 20,
-                "opposing": 35,
-                "skeptical": 30,
-                "neutral": 15
-                }
-            },
-            "redditEvidence": [
-                {
-                "post": {"title": "...", "score": 100, "url": "..."},
-                "relevance": "high",
-                "sentiment": "opposing"
-                }
-            ],
-            "farcasterEvidence": [
-                {
-                "cast": {"text": "...", "author": "...", "reactions": {...}},
-                "relevance": "medium",
-                "sentiment": "skeptical"
-                }
-            ],
-            "twitterEvidence": [],
-            "keyDiscussions": [
-                "Main debate point 1",
-                "Main debate point 2"
-            ],
-            "explanation": "Brief summary of social media sentiment and key findings"
-            }
+IMPORTANT VERDICT LOGIC:
+- If social media widely SUPPORTS the claim → socialScore = 0.7+, isCredible = true
+- If social media widely OPPOSES/DEBUNKS the claim → socialScore = 0.3-, isCredible = false
+- If social media is MIXED or NO EVIDENCE FOUND → socialScore = 0.5, isCredible = true (DEFAULT!)
+- Lack of social evidence does NOT mean the claim is false!
 
-            Scoring guide:
-            - socialScore: 0-1 (0=claim widely rejected, 1=widely accepted)
-            - consensus: "supportive" | "opposing" | "skeptical" | "mixed"
-            - confidence: 0-1 (how confident you are in the assessment)
+Return ONLY valid JSON in this EXACT format:
+{
+  "socialScore": 0.65,
+  "confidence": 0.75,
+  "isCredible": true,
+  "overallSentiment": {
+    "consensus": "skeptical",
+    "confidence": 0.7,
+    "distribution": {
+      "supportive": 20,
+      "opposing": 35,
+      "skeptical": 30,
+      "neutral": 15
+    }
+  },
+  "redditEvidence": [
+    {
+      "post": {"title": "...", "score": 100, "url": "..."},
+      "relevance": "high",
+      "sentiment": "opposing"
+    }
+  ],
+  "farcasterEvidence": [],
+  "twitterEvidence": [],
+  "keyDiscussions": [
+    "Main debate point 1",
+    "Main debate point 2"
+  ],
+  "explanation": "Brief summary of social media sentiment and key findings"
+}
 
-            Be objective. Consider both quantity and quality of engagement.`;
+Scoring guide:
+- socialScore: 0-1 (0=claim widely rejected, 0.5=neutral/unclear, 1=widely accepted)
+- isCredible: true if socialScore >= 0.4 (DEFAULT to true for neutral/unclear cases)
+- consensus: "supportive" | "opposing" | "skeptical" | "mixed"
+- confidence: 0-1 (how confident you are in the assessment)
+
+CRITICAL: If little or no social evidence was found, default to socialScore=0.5 and isCredible=true.
+Do NOT return isCredible=false just because there's no social media discussion about this topic.
+
+Be objective. Consider both quantity and quality of engagement.`;
 
     const verdictMessage = await llm.invoke([
         ...state.messages,
@@ -410,14 +460,25 @@ async function extractVerdict(state: typeof SocialEvidenceState.State) {
             ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
 
+        console.log('\n📝 [SOCIAL_AGENT] LLM Response (first 500 chars):');
+        console.log(content.substring(0, 500));
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
 
         const verdict = JSON.parse(jsonStr);
 
-        return {
+        console.log('\n🔍 [SOCIAL_AGENT] Parsed verdict:');
+        console.log(`   socialScore: ${verdict.socialScore}`);
+        console.log(`   isCredible: ${verdict.isCredible}`);
+        console.log(`   confidence: ${verdict.confidence}`);
+        console.log(`   consensus: ${verdict.overallSentiment?.consensus}`);
+        console.log(`   explanation: ${verdict.explanation?.substring(0, 100)}...`);
+
+        const result = {
             socialScore: verdict.socialScore ?? 0.5,
             confidence: verdict.confidence ?? 0.5,
+            isCredible: verdict.isCredible ?? true,  // Default to true (UNCLEAR)
             overallSentiment: verdict.overallSentiment || { consensus: 'mixed', confidence: 0.5, distribution: {} },
             redditEvidence: verdict.redditEvidence || [],
             farcasterEvidence: verdict.farcasterEvidence || [],
@@ -425,11 +486,16 @@ async function extractVerdict(state: typeof SocialEvidenceState.State) {
             keyDiscussions: verdict.keyDiscussions || [],
             explanation: verdict.explanation || "No explanation provided"
         };
+
+        console.log(`\n✅ [SOCIAL_AGENT] Final: isCredible=${result.isCredible}, socialScore=${result.socialScore}`);
+
+        return result;
     } catch (error) {
-        console.error("Failed to parse social evidence verdict:", error);
+        console.error("❌ [SOCIAL_AGENT] Failed to parse verdict:", error);
         return {
             socialScore: 0.5,
             confidence: 0.3,
+            isCredible: true,  // Default to true (UNCLEAR), not false
             overallSentiment: { consensus: 'mixed', confidence: 0.3, distribution: {} },
             explanation: "Error processing social evidence analysis"
         };

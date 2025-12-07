@@ -539,19 +539,45 @@ async function processToolResults(state: typeof LogicConsistencyState.State) {
 }
 
 async function extractVerdict(state: typeof LogicConsistencyState.State) {
-    const verdictPrompt = `Based on the tool results above, provide ONLY this JSON (no other text):
+    const verdictPrompt = `Based on the tool results above, determine if the CLAIM is TRUE or FALSE.
+
+CRITICAL: You must analyze the SEARCH RESULTS to determine if the claim is factually accurate.
+
+VERDICT DECISION TREE:
+1. Do search results show the claim is DEBUNKED, MISINFORMATION, or a CONSPIRACY THEORY?
+   → If YES: isConsistent = false, isCredible = false, logicScore = 0.1-0.3
+   
+2. Do search results show FACT-CHECKS that say the claim is FALSE?
+   → If YES: isConsistent = false, isCredible = false, logicScore = 0.2
+
+3. Do search results CONFIRM the claim's facts with credible sources?
+   → If YES: isConsistent = true, isCredible = true, logicScore = 0.8+
+
+4. Not enough evidence either way?
+   → isConsistent = true, isCredible = true, logicScore = 0.5 (UNCLEAR)
+
+IMPORTANT: If your explanation mentions "debunked", "misinformation", "conspiracy", "false claim", or "not supported by evidence", then your verdict MUST be isConsistent=false and isCredible=false!
+
+Provide ONLY this JSON (no other text):
 
 {
   "logicScore": 0.75,
   "isConsistent": true,
+  "isCredible": true,
   "confidence": 0.85,
-  "flaggedIssues": ["list issues"],
+  "flaggedIssues": ["list any real issues found"],
   "temporalConsistency": {"consistent": true, "issues": []},
   "logicalFallacies": [],
   "contradictions": [],
-  "explanation": "brief explanation",
+  "explanation": "brief explanation of why claim is true/false based on evidence",
   "needsExternalVerification": false
-}`;
+}
+
+SCORING GUIDE:
+- logicScore 0.7-1.0 = claim appears TRUE (search confirms it)
+- logicScore 0.5-0.7 = UNCLEAR (not enough evidence)  
+- logicScore 0.0-0.4 = claim appears FALSE (debunked, contradicted, misinformation)
+- isCredible MUST be false if logicScore < 0.5`;
 
     const verdictMessage = await llm.invoke([
         ...state.messages,
@@ -563,14 +589,26 @@ async function extractVerdict(state: typeof LogicConsistencyState.State) {
             ? verdictMessage.content
             : JSON.stringify(verdictMessage.content);
 
+        console.log('\n📝 [LOGIC_AGENT] LLM Response (first 500 chars):');
+        console.log(content.substring(0, 500));
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
 
         const verdict = JSON.parse(jsonStr);
 
-        return {
+        console.log('\n🔍 [LOGIC_AGENT] Parsed verdict:');
+        console.log(`   logicScore: ${verdict.logicScore}`);
+        console.log(`   isConsistent: ${verdict.isConsistent}`);
+        console.log(`   isCredible: ${verdict.isCredible}`);
+        console.log(`   confidence: ${verdict.confidence}`);
+        console.log(`   flaggedIssues: ${JSON.stringify(verdict.flaggedIssues)}`);
+        console.log(`   explanation: ${verdict.explanation?.substring(0, 100)}...`);
+
+        const result = {
             logicScore: verdict.logicScore ?? 0.5,
             isConsistent: verdict.isConsistent ?? true,
+            isCredible: verdict.isCredible ?? (verdict.logicScore >= 0.5),
             confidence: verdict.confidence ?? 0.5,
             flaggedIssues: verdict.flaggedIssues || [],
             temporalConsistency: verdict.temporalConsistency || { consistent: true, issues: [] },
@@ -579,11 +617,16 @@ async function extractVerdict(state: typeof LogicConsistencyState.State) {
             explanation: verdict.explanation || "No explanation provided",
             needsExternalVerification: verdict.needsExternalVerification ?? false
         };
+
+        console.log(`\n✅ [LOGIC_AGENT] Final: isConsistent=${result.isConsistent}, isCredible=${result.isCredible}, logicScore=${result.logicScore}`);
+
+        return result;
     } catch (error) {
-        console.error("Failed to parse verdict:", error);
+        console.error("❌ [LOGIC_AGENT] Failed to parse verdict:", error);
         return {
             logicScore: 0.5,
-            isConsistent: false,
+            isConsistent: true,  // Default to true (UNCLEAR), not false
+            isCredible: true,    // Default to true (UNCLEAR), not false  
             confidence: 0.3,
             flaggedIssues: ["Failed to parse verdict"],
             explanation: "Error processing analysis results"

@@ -217,11 +217,22 @@ const sightengineDetectAIImage = tool(
             const formData = new FormData();
             formData.append('api_user', env.SIGHTENGINE_API_USER || '');
             formData.append('api_secret', env.SIGHTENGINE_API_SECRET || '');
-            formData.append('models', 'genai');
+            // Use multiple detection models for comprehensive analysis
+            // genai = AI image generation detection
+            // deepfake = Face manipulation detection  
+            // scam = Scam image detection (catches edited screenshots)
+            formData.append('models', 'genai,deepfake,scam');
 
             if (imageFile) {
+                // Check if file exists
+                if (!fs.existsSync(imageFile)) {
+                    console.error(`[Sightengine] File not found: ${imageFile}`);
+                    throw new Error(`Image file not found: ${imageFile}`);
+                }
+                console.log(`[Sightengine] Uploading local file: ${imageFile}`);
                 formData.append('media', fs.createReadStream(imageFile));
             } else if (imageUrl) {
+                console.log(`[Sightengine] Analyzing URL: ${imageUrl}`);
                 formData.append('url', imageUrl);
             } else {
                 throw new Error('Either imageUrl or imageFile must be provided');
@@ -236,34 +247,74 @@ const sightengineDetectAIImage = tool(
 
             const result = response.data;
 
+            // LOG RAW API RESPONSE for debugging
+            console.log('[Sightengine] Raw API Response:', JSON.stringify(result, null, 2));
+
             // Parse Sightengine genai response
-            // Response format: { type: { ai_generated: 0.99 } }
-            const aiScore = result.type?.ai_generated || 0;
-            const isAIGenerated = aiScore > 0.5;
+            // Response format: { type: { ai_generated: 0.99, deepfake: 0.5 } }
+            const aiScore = result.type?.ai_generated ?? 0;
+            const deepfakeScore = result.type?.deepfake ?? 0;
+            const scamScore = result.scam?.prob ?? 0;
+
+            // Use the MAXIMUM of all detection scores
+            // Any high score indicates potential manipulation
+            const maxScore = Math.max(aiScore, deepfakeScore, scamScore);
+
+            // More lenient threshold - 0.3 or higher is suspicious
+            const isAIGenerated = maxScore > 0.3;
+
+            console.log(`[Sightengine] Detection Scores:`);
+            console.log(`  → AI Generated: ${(aiScore * 100).toFixed(1)}%`);
+            console.log(`  → Deepfake:     ${(deepfakeScore * 100).toFixed(1)}%`);
+            console.log(`  → Scam:         ${(scamScore * 100).toFixed(1)}%`);
+            console.log(`  → MAX Score:    ${(maxScore * 100).toFixed(1)}% → isAIGenerated: ${isAIGenerated}`);
+
+            // Determine interpretation based on scores
+            let interpretation = 'Likely authentic';
+            let detectionType = 'none';
+            if (aiScore > 0.5) {
+                interpretation = 'Likely AI-generated image';
+                detectionType = 'ai_generated';
+            } else if (deepfakeScore > 0.5) {
+                interpretation = 'Possible deepfake/face manipulation';
+                detectionType = 'deepfake';
+            } else if (scamScore > 0.5) {
+                interpretation = 'Possible scam/manipulated screenshot';
+                detectionType = 'scam';
+            } else if (maxScore > 0.3) {
+                interpretation = 'Uncertain - some manipulation indicators';
+                detectionType = 'suspicious';
+            }
 
             return JSON.stringify({
                 source: imageUrl || imageFile,
                 isAIGenerated,
-                confidence: aiScore,
-                score: aiScore,
-                interpretation: aiScore > 0.7 ? 'Likely AI-generated' :
-                    aiScore > 0.3 ? 'Uncertain' :
-                        'Likely authentic',
+                confidence: maxScore, // Use max score as confidence
+                score: aiScore, // Original AI score for backwards compat
+                detectionScores: {
+                    aiGenerated: aiScore,
+                    deepfake: deepfakeScore,
+                    scam: scamScore
+                },
+                detectionType,
+                interpretation,
                 rawResponse: result
             }, null, 2);
 
         } catch (error: any) {
-            console.error('Sightengine AI Image Detection error:', error.response?.data || error.message);
+            console.error('[Sightengine] AI Image Detection ERROR:', error.response?.data || error.message);
             return JSON.stringify({
                 error: 'Sightengine AI image detection failed',
                 message: error.response?.data?.message || error.message,
-                source: imageUrl || imageFile
+                source: imageUrl || imageFile,
+                isAIGenerated: false,
+                confidence: 0
             });
         }
     },
     {
         name: "sightengineDetectAIImage",
-        description: "Detect if an image is AI-generated using Sightengine genai model. Returns score 0-1 where >0.7 = likely AI, 0.3-0.7 = uncertain, <0.3 = likely real.",
+        description: "Detect if an image is AI-generated, deepfaked, or manipulated using Sightengine's genai, deepfake, and scam detection models. Returns score 0-1 where >0.5 = likely manipulated, 0.3-0.5 = uncertain, <0.3 = likely real.",
         schema: z.object({
             imageUrl: z.string().optional().describe("URL of the image to analyze"),
             imageFile: z.string().optional().describe("Local file path of the image")
@@ -600,22 +651,52 @@ async function analyzeMediaForensics(state: typeof MediaForensicsState.State) {
         console.log(`✓ Analyzing ${media.type}: ${media.url.substring(0, 60)}...`);
 
         if (media.type === 'image') {
+            // Check if this is a local file (localhost URL)
+            const isLocalFile = media.url.includes('localhost') || media.url.startsWith('file://');
+
+            // For local files, extract the file path for direct file upload
+            let localFilePath: string | undefined;
+            if (isLocalFile) {
+                // Extract path from URL like http://localhost:3000/uploads/filename
+                const pathMatch = media.url.match(/\/uploads\/(.+)$/);
+                if (pathMatch) {
+                    localFilePath = `uploads/${pathMatch[1]}`;
+                    console.log(`  → Detected local file: ${localFilePath}`);
+                }
+            }
+
             // Sightengine AI Image Detection (genai model)
             try {
                 console.log('  → Running Sightengine AI detection...');
-                const aiResultRaw = await sightengineDetectAIImage.invoke({
-                    imageUrl: media.url
-                });
+
+                // Use file upload for local files, URL for remote
+                const aiResultRaw = await sightengineDetectAIImage.invoke(
+                    localFilePath
+                        ? { imageFile: localFilePath }
+                        : { imageUrl: media.url }
+                );
 
                 const aiResult = JSON.parse(aiResultRaw);
-                console.log(`  → AI Detection Score: ${aiResult.score || 0}`);
+
+                // Log detailed results
+                console.log(`  → AI Detection Results:`);
+                console.log(`    isAIGenerated: ${aiResult.isAIGenerated}`);
+                console.log(`    Confidence: ${(aiResult.confidence * 100).toFixed(1)}%`);
+                console.log(`    Interpretation: ${aiResult.interpretation}`);
+                if (aiResult.detectionScores) {
+                    console.log(`    Breakdown: AI=${(aiResult.detectionScores.aiGenerated * 100).toFixed(1)}%, ` +
+                        `Deepfake=${(aiResult.detectionScores.deepfake * 100).toFixed(1)}%, ` +
+                        `Scam=${(aiResult.detectionScores.scam * 100).toFixed(1)}%`);
+                }
 
                 imageAnalysis.push({
                     url: media.url,
                     isAIGenerated: aiResult.isAIGenerated || false,
                     confidence: aiResult.confidence || aiResult.score || 0,
                     provider: 'Sightengine',
-                    interpretation: aiResult.interpretation || 'Unknown'
+                    interpretation: aiResult.interpretation || 'Unknown',
+                    detectionScores: aiResult.detectionScores,
+                    detectionType: aiResult.detectionType
                 });
             } catch (error: any) {
                 console.log(`  ✗ Sightengine AI detection failed: ${error.message}`);
@@ -765,6 +846,7 @@ async function extractVerdict(state: typeof MediaForensicsState.State) {
             mediaAuthenticityScore: 0.5,
             hasManipulation: false,
             confidence: 0.3,
+            isCredible: true, // No media to analyze = treat as credible (neutral)
             explanation: "No media was analyzed"
         };
     }
@@ -776,25 +858,31 @@ async function extractVerdict(state: typeof MediaForensicsState.State) {
 
     const authenticityScore = 1 - avgAIConfidence;
 
-    // Determine if manipulation detected
-    const hasManipulation = allMedia.some(item => item.isAIGenerated && item.confidence > 0.5);
+    // Determine if manipulation detected - use a lower threshold to catch AI images
+    // If ANY media item is AI-generated with confidence > 0.3, flag it
+    const hasManipulation = allMedia.some(item => item.isAIGenerated && item.confidence > 0.3);
+    const highConfidenceManipulation = allMedia.some(item => item.isAIGenerated && item.confidence > 0.5);
 
-    // Calculate overall confidence (average of all detection confidences)
-    const overallConfidence = allMedia.reduce((sum, item) =>
+    // Calculate overall confidence (use the MAX confidence from AI detection for clearer signal)
+    const maxAIConfidence = Math.max(...allMedia.map(item => item.isAIGenerated ? item.confidence : 0), 0);
+    const avgConfidence = allMedia.reduce((sum, item) =>
         sum + item.confidence, 0) / allMedia.length;
+
+    // Use max AI confidence when manipulation detected, otherwise avg
+    const overallConfidence = hasManipulation ? Math.max(maxAIConfidence, avgConfidence) : avgConfidence;
 
     // Identify manipulation types
     const manipulationTypes: string[] = [];
-    if (state.imageAnalysis.some(img => img.isAIGenerated && img.confidence > 0.7)) {
+    if (state.imageAnalysis.some(img => img.isAIGenerated && img.confidence > 0.3)) {
         manipulationTypes.push("AI-generated image");
     }
-    if (state.videoAnalysis.some(vid => vid.isAIGenerated && vid.confidence > 0.7)) {
+    if (state.videoAnalysis.some(vid => vid.isAIGenerated && vid.confidence > 0.3)) {
         manipulationTypes.push("AI-generated video");
     }
-    if (state.videoAnalysis.some(vid => (vid as any).isDeepfake && (vid as any).confidence > 0.7)) {
+    if (state.videoAnalysis.some(vid => (vid as any).isDeepfake && (vid as any).confidence > 0.3)) {
         manipulationTypes.push("Deepfake video");
     }
-    if (state.audioAnalysis.some(aud => aud.isAIGenerated && aud.confidence > 0.7)) {
+    if (state.audioAnalysis.some(aud => aud.isAIGenerated && aud.confidence > 0.3)) {
         manipulationTypes.push("AI-generated audio");
     }
 
@@ -806,25 +894,33 @@ async function extractVerdict(state: typeof MediaForensicsState.State) {
     if (hasManipulation) {
         explanation = `Analysis detected ${aiItems.length} AI-generated/manipulated media out of ${allMedia.length} total. `;
         if (manipulationTypes.length > 0) {
-            explanation += `Manipulation types: ${manipulationTypes.join(", ")}. `;
+            explanation += `Detected: ${manipulationTypes.join(", ")}. `;
         }
-        explanation += `Average AI confidence: ${(avgAIConfidence * 100).toFixed(0)}%.`;
+        explanation += `Max AI confidence: ${(maxAIConfidence * 100).toFixed(0)}%.`;
     } else {
         explanation = `All ${allMedia.length} media items appear to be authentic with low AI-generation scores. `;
         explanation += `Average authenticity confidence: ${(authenticityScore * 100).toFixed(0)}%.`;
     }
 
+    // CRITICAL: isCredible = true means media is authentic (claim is supported)
+    // isCredible = false means media is AI-generated/fake (claim is NOT credible)
+    // If manipulation detected, the media does not support the claim's authenticity
+    const isCredible = !hasManipulation;
+
     return {
         mediaAuthenticityScore: authenticityScore,
         hasManipulation,
         manipulationTypes,
-        confidence: overallConfidence,
+        confidence: overallConfidence, // HIGH confidence when manipulation detected
+        isCredible, // FALSE when AI-generated/manipulated media found
         imageAnalysis: state.imageAnalysis,
         videoAnalysis: state.videoAnalysis,
         audioAnalysis: state.audioAnalysis,
-        explanation
+        explanation,
+        flaggedIssues: manipulationTypes // For compatibility with orchestrator
     };
 }
+
 
 async function shouldContinue(state: typeof MediaForensicsState.State) {
     // Since we call tools directly, just go straight to verdict

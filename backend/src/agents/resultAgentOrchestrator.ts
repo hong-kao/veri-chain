@@ -314,7 +314,7 @@ export class ResultOrchestrator {
 
   /**
    * PHASE 2: Run Analysis Agents
-   * Executes all specialized AI agents and stores results
+   * Executes ONLY the relevant AI agents based on claim content
    */
   async runAnalysisAgents(claimId: number): Promise<AgentResult[]> {
     const claim = await prisma.claim.findUnique({
@@ -325,16 +325,67 @@ export class ResultOrchestrator {
       throw new Error(`Claim ${claimId} not found`);
     }
 
-    console.log(`🤖 Running analysis agents for claim ${claimId}...`);
+    // Parse claim content to determine which agents to run
+    const images = claim.media_images ? JSON.parse(claim.media_images) : [];
+    const videos = claim.media_videos ? JSON.parse(claim.media_videos) : [];
+    const urls = claim.extracted_urls ? JSON.parse(claim.extracted_urls) : [];
+    const hasMedia = images.length > 0 || videos.length > 0;
+    const hasUrls = urls.length > 0;
+    const platform = claim.platform;
 
-    const agentPromises = [
-      this.runAgent(claimId, 'logic_consistency', logicConsistencyAgent, claim),
-      this.runAgent(claimId, 'citation_evidence', citationEvidenceAgent, claim),
-      this.runAgent(claimId, 'source_credibility', sourceCredibilityAgent, claim),
-      this.runAgent(claimId, 'social_evidence', socialEvidenceAgent, claim),
-      this.runAgent(claimId, 'media_forensics', mediaForensicsAgent, claim),
-      this.runAgent(claimId, 'propagation_pattern', propagationPatternAgent, claim)
-    ];
+    console.log(`🤖 Running analysis agents for claim ${claimId}...`);
+    console.log(`   📋 Claim type: ${claim.claim_type || 'unknown'}`);
+    console.log(`   🖼️  Has media: ${hasMedia} (${images.length} images, ${videos.length} videos)`);
+    console.log(`   🔗 Has URLs: ${hasUrls} (${urls.length} URLs)`);
+    console.log(`   📱 Platform: ${platform || 'unknown'}`);
+
+    // Build list of agents to run based on claim content
+    const agentPromises: Promise<AgentResult | null>[] = [];
+
+    // ALWAYS run these core agents (essential for any claim):
+    // 1. Logic & Consistency - checks for logical fallacies, contradictions
+    agentPromises.push(this.runAgent(claimId, 'logic_consistency', logicConsistencyAgent, claim));
+    console.log('   ✓ Running: logic_consistency (core agent)');
+
+    // 2. Citation Evidence - searches for supporting/contradicting evidence
+    agentPromises.push(this.runAgent(claimId, 'citation_evidence', citationEvidenceAgent, claim));
+    console.log('   ✓ Running: citation_evidence (core agent)');
+
+    // CONDITIONALLY run these agents based on claim content:
+
+    // 3. Source Credibility - only if we have URLs to analyze
+    if (hasUrls) {
+      agentPromises.push(this.runAgent(claimId, 'source_credibility', sourceCredibilityAgent, claim));
+      console.log('   ✓ Running: source_credibility (has URLs)');
+    } else {
+      console.log('   ⏭️  Skipping: source_credibility (no URLs to analyze)');
+    }
+
+    // 4. Social Evidence - useful for claims from social platforms or viral content
+    if (platform === 'twitter' || platform === 'reddit' || platform === 'farcaster' || !platform) {
+      agentPromises.push(this.runAgent(claimId, 'social_evidence', socialEvidenceAgent, claim));
+      console.log('   ✓ Running: social_evidence (social platform claim)');
+    } else {
+      console.log('   ⏭️  Skipping: social_evidence (not a social platform claim)');
+    }
+
+    // 5. Media Forensics - ONLY if there are images or videos to analyze
+    if (hasMedia) {
+      agentPromises.push(this.runAgent(claimId, 'media_forensics', mediaForensicsAgent, claim));
+      console.log('   ✓ Running: media_forensics (has media attachments)');
+    } else {
+      console.log('   ⏭️  Skipping: media_forensics (no media to analyze)');
+    }
+
+    // 6. Propagation Pattern - only for claims with URLs or from social platforms
+    if (hasUrls || platform) {
+      agentPromises.push(this.runAgent(claimId, 'propagation_pattern', propagationPatternAgent, claim));
+      console.log('   ✓ Running: propagation_pattern (has URLs or platform)');
+    } else {
+      console.log('   ⏭️  Skipping: propagation_pattern (no propagation data available)');
+    }
+
+    console.log(`\n   📊 Running ${agentPromises.length} agents (optimized from 6)`);
 
     const results = await Promise.allSettled(agentPromises);
 
@@ -357,7 +408,7 @@ export class ResultOrchestrator {
       }
     });
 
-    console.log(`✅ Completed ${agentResults.length}/6 agents`);
+    console.log(`✅ Completed ${agentResults.length}/${agentPromises.length} agents`);
     return agentResults;
   }
 
@@ -374,11 +425,32 @@ export class ResultOrchestrator {
       console.log(`  ⚙️  Running ${agentName}...`);
 
       // Prepare agent input based on claim data
+      const images = claim.media_images ? JSON.parse(claim.media_images) : [];
+      const videos = claim.media_videos ? JSON.parse(claim.media_videos) : [];
+
+      // For media_forensics, format media as mediaUrls with {url, type} structure
+      // Also convert local file paths to accessible URLs
+      const baseUrl = process.env.BACKEND_URL || 'http://localhost:3000';
+      const formatMediaUrl = (path: string, type: 'image' | 'video' | 'audio') => {
+        // If it's already a URL, use it directly
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          return { url: path, type };
+        }
+        // Local file path - convert to accessible URL
+        return { url: `${baseUrl}${path}`, type };
+      };
+
+      const mediaUrls = [
+        ...images.map((img: string) => formatMediaUrl(img, 'image')),
+        ...videos.map((vid: string) => formatMediaUrl(vid, 'video'))
+      ];
+
       const agentInput = {
         claim: claim.normalized_text,
         urls: claim.extracted_urls ? JSON.parse(claim.extracted_urls) : [],
-        images: claim.media_images ? JSON.parse(claim.media_images) : [],
-        videos: claim.media_videos ? JSON.parse(claim.media_videos) : [],
+        images: images,
+        videos: videos,
+        mediaUrls: mediaUrls, // Add formatted mediaUrls for media_forensics agent
         platform: claim.platform,
         platformAuthor: claim.platform_author,
         platformUrl: claim.platform_url,
@@ -388,12 +460,45 @@ export class ResultOrchestrator {
       // Invoke agent
       const result = await agentFunction.invoke(agentInput);
 
+      // FIXED: Extract verdict based on what the agent actually returns
+      // Different agents return different fields, so we need to check multiple options
+      let verdictBool: boolean;
+
+      // Priority order for determining verdict:
+      // 1. isCredible (used by sourceCredibility, socialEvidence, mediaForensics)
+      // 2. isConsistent (used by logicConsistency/textForensics)
+      // 3. verdict string (used by citationEvidence - "supported"/"contradicted"/"insufficient")
+      // 4. score-based fallback (logicScore, socialScore, evidenceScore)
+
+      if (result.isCredible !== undefined) {
+        verdictBool = result.isCredible === true;
+      } else if (result.isConsistent !== undefined) {
+        verdictBool = result.isConsistent === true;
+      } else if (result.verdict !== undefined) {
+        // Citation agent returns "supported", "contradicted", "mixed", "insufficient"
+        const v = String(result.verdict).toLowerCase();
+        verdictBool = v === 'supported' || v === 'true';
+      } else {
+        // Fallback to score-based verdict
+        const score = result.logicScore ?? result.socialScore ?? result.evidenceScore ?? result.sourceCredibilityScore ?? 0.5;
+        verdictBool = score >= 0.5;  // Score >= 0.5 = TRUE, else FALSE
+      }
+
+      console.log(`    📊 [DEBUG] ${agentName} raw result:`, {
+        isCredible: result.isCredible,
+        isConsistent: result.isConsistent,
+        verdict: result.verdict,
+        logicScore: result.logicScore,
+        confidence: result.confidence,
+        extractedVerdict: verdictBool ? 'TRUE' : 'FALSE'
+      });
+
       // Store in agent_results table
       await prisma.agentResult.create({
         data: {
           claim_id: claimId,
           agent_name: agentName as AgentType,
-          verdict: result.isCredible ? VerdictType.true_ : VerdictType.false_,
+          verdict: verdictBool ? VerdictType.true_ : VerdictType.false_,
           confidence: result.confidence || 0.5,
           flags: JSON.stringify(result.flags || result.flaggedIssues || []),
           raw_result: JSON.stringify(result),
@@ -401,11 +506,11 @@ export class ResultOrchestrator {
         }
       });
 
-      console.log(`    ✓ ${agentName}: verdict=${result.isCredible ? 'TRUE' : 'FALSE'}, confidence=${result.confidence?.toFixed(2)}`);
+      console.log(`    ✓ ${agentName}: verdict=${verdictBool ? 'TRUE' : 'FALSE'}, confidence=${result.confidence?.toFixed(2)}`);
 
       return {
         agentName: agentName as AgentType,
-        verdict: result.isCredible ? VerdictType.true_ : VerdictType.false_,
+        verdict: verdictBool ? VerdictType.true_ : VerdictType.false_,
         confidence: result.confidence || 0.5,
         flags: result.flags || result.flaggedIssues || [],
         rawResult: result
@@ -1007,7 +1112,6 @@ export class ResultOrchestrator {
 
       const resolveTx = await this.claimRegistryContract.resolveClaim(
         claimId,
-        claim.claim_hash,
         verdictEnum,
         confidenceScaled
       );

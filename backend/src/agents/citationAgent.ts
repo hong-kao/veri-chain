@@ -65,49 +65,93 @@ const serpApiSearch = tool(
 
 const searchFactCheckSites = tool(
     async ({ claim }: { claim: string }) => {
+        // Combine fact-check domains into a SINGLE query to reduce API calls
         const factCheckDomains = [
             'snopes.com',
             'factcheck.org',
             'politifact.com',
             'reuters.com/fact-check',
             'apnews.com/ap-fact-check',
-            'fullfact.org',
-            'africacheck.org',
-            'checkyourfact.com'
+            'fullfact.org'
         ];
 
-        const queries = factCheckDomains.map(domain =>
-            `site:${domain} ${claim.slice(0, 100)}`
-        );
-
-        const results = [];
-
         try {
-            for (const query of queries.slice(0, 3)) {
-                const response = await axios.get('https://serpapi.com/search', {
-                    params: {
-                        q: query,
-                        api_key: env.SERP_API_KEY || '',
-                        num: 3,
-                        engine: 'google'
-                    }
-                });
+            // Use OR operator to search all fact-check sites in ONE API call
+            const siteQuery = factCheckDomains.slice(0, 4).map(d => `site:${d}`).join(' OR ');
+            const searchQuery = `(${siteQuery}) ${claim.slice(0, 100)}`;
 
-                const organicResults = response.data.organic_results || [];
-                results.push(...organicResults.map((result: any) => ({
+            console.log('✓ Searching fact-check sites (combined query)...');
+
+            const response = await axios.get('https://serpapi.com/search', {
+                params: {
+                    q: searchQuery,
+                    api_key: env.SERP_API_KEY || '',
+                    num: 10,
+                    engine: 'google'
+                }
+            });
+
+            const organicResults = response.data.organic_results || [];
+
+            // Also extract knowledge graph if available (often has fact-check info)
+            const knowledgeGraph = response.data.knowledge_graph || null;
+
+            // Extract related questions (useful context)
+            const relatedQuestions = response.data.related_questions || [];
+
+            const results = organicResults.map((result: any) => {
+                // Detect the source domain
+                const url = result.link || '';
+                const sourceDomain = factCheckDomains.find(d => url.includes(d)) || 'other';
+
+                // Try to extract verdict from snippet (common patterns in fact-check titles)
+                let detectedVerdict = 'unknown';
+                const snippetLower = (result.snippet || '').toLowerCase();
+                const titleLower = (result.title || '').toLowerCase();
+
+                if (snippetLower.includes('false') || titleLower.includes('false') ||
+                    snippetLower.includes('pants on fire') || snippetLower.includes('fake')) {
+                    detectedVerdict = 'FALSE';
+                } else if (snippetLower.includes('true') || titleLower.includes('true') ||
+                    snippetLower.includes('correct') || snippetLower.includes('accurate')) {
+                    detectedVerdict = 'TRUE';
+                } else if (snippetLower.includes('mostly') || snippetLower.includes('half') ||
+                    snippetLower.includes('mixture') || snippetLower.includes('mixed')) {
+                    detectedVerdict = 'MIXED';
+                } else if (snippetLower.includes('unproven') || snippetLower.includes('unverified')) {
+                    detectedVerdict = 'UNPROVEN';
+                }
+
+                return {
                     title: result.title,
                     url: result.link,
                     snippet: result.snippet,
                     date: result.date,
-                    source: result.displayed_link
-                })));
-            }
+                    source: sourceDomain,
+                    detectedVerdict,
+                    isFactCheckSite: factCheckDomains.some(d => url.includes(d))
+                };
+            });
+
+            // Filter to only fact-check site results
+            const factCheckResults = results.filter((r: any) => r.isFactCheckSite);
 
             return JSON.stringify({
                 claim,
-                factCheckResults: results,
-                totalFound: results.length,
-                domains: factCheckDomains.slice(0, 3)
+                factCheckResults,
+                totalFound: factCheckResults.length,
+                allResults: results.length,
+                // Include knowledge graph and related questions for better context
+                knowledgeGraph: knowledgeGraph ? {
+                    title: knowledgeGraph.title,
+                    description: knowledgeGraph.description,
+                    source: knowledgeGraph.source?.name
+                } : null,
+                relatedQuestions: relatedQuestions.slice(0, 3).map((q: any) => ({
+                    question: q.question,
+                    snippet: q.snippet
+                })),
+                apiCallsUsed: 1 // Down from 3!
             }, null, 2);
         } catch (error: any) {
             console.error('Fact-check search failed:', error.message);
@@ -120,7 +164,7 @@ const searchFactCheckSites = tool(
     },
     {
         name: "searchFactCheckSites",
-        description: "Search major fact-checking websites (Snopes, PolitiFact, FactCheck.org, Reuters Fact Check, AP Fact Check) for existing fact-checks of the claim. Use this FIRST to see if the claim has already been professionally fact-checked.",
+        description: "Search major fact-checking websites (Snopes, PolitiFact, FactCheck.org, Reuters Fact Check, AP Fact Check) for existing fact-checks of the claim using a SINGLE optimized query. Returns titles, URLs, detected verdicts, and related context.",
         schema: z.object({
             claim: z.string().describe("The claim to search for across fact-checking sites")
         })
@@ -373,14 +417,23 @@ async function searchEvidence(state: typeof CitationEvidenceState.State) {
         claim: state.claim
     });
 
-    // 2. Do a general search
-    console.log('✓ Searching Google...');
+    // 2. Do a general search for VERIFICATION (not just fact-checks)
+    // Extract key terms from claim for targeted search
+    console.log('✓ Searching Google for verification...');
     const searchResult = await serpApiSearch.invoke({
         query: state.claim.substring(0, 100),
         count: 10
     });
 
-    // 3. Search for debunking evidence
+    // 3. Search for SUPPORTING evidence (new!)
+    // Look for credible sources that might confirm the claim
+    console.log('✓ Searching for supporting evidence...');
+    const supportResult = await serpApiSearch.invoke({
+        query: `${state.claim.substring(0, 80)} official confirmed`,
+        count: 5
+    });
+
+    // 4. Search for contradicting evidence
     console.log('✓ Searching for contradicting evidence...');
     const debunkResult = await serpApiSearch.invoke({
         query: `${state.claim.substring(0, 80)} debunked false`,
@@ -393,11 +446,13 @@ async function searchEvidence(state: typeof CitationEvidenceState.State) {
 
 Fact-Check Sites: ${factCheckResult}
 
-General Search: ${searchResult}
+General Search (Verification): ${searchResult}
+
+Supporting Evidence Search: ${supportResult}
 
 Debunking Search: ${debunkResult}
 
-Now synthesize these findings.`)
+Now synthesize these findings and determine if the claim is TRUE, FALSE, or UNCLEAR.`)
         ]
     };
 }
@@ -408,12 +463,19 @@ async function processToolResults(state: typeof CitationEvidenceState.State) {
 }
 
 async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
-    const synthesisPrompt = `Based on all the evidence you've gathered, synthesize your findings.
+    const synthesisPrompt = `Based on all the evidence you've gathered, synthesize your findings to determine if the claim is TRUE or FALSE.
+
+            IMPORTANT VERDICT LOGIC:
+            - If fact-checkers (Snopes, PolitiFact, etc.) say FALSE → verdict = "contradicted"
+            - If credible sources (official sites, news) CONFIRM the claim → verdict = "supported"
+            - If search results contain information that SUPPORTS the claim facts → verdict = "supported"
+            - If no clear evidence either way → verdict = "insufficient" (NOT "contradicted"!)
+            - Only use "contradicted" if there is ACTUAL EVIDENCE the claim is false
 
             Analyze:
             1. Fact-check results (if any) - these are the MOST important
-            2. Supporting evidence - credible sources that confirm the claim
-            3. Contradicting evidence - credible sources that refute the claim
+            2. Supporting evidence - credible sources that confirm the claim (official websites, news)
+            3. Contradicting evidence - credible sources that actually refute the claim
             4. Source quality - weight evidence by credibility scores
 
             Return ONLY valid JSON in this EXACT format:
@@ -422,9 +484,9 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
                 {
                 "url": "https://...",
                 "title": "Article title",
-                "snippet": "Key excerpt",
+                "snippet": "Key excerpt showing claim is true",
                 "credibilityScore": 0.85,
-                "sourceType": "fact-check",
+                "sourceType": "official" | "mainstream-news" | "fact-check",
                 "publishDate": "2024-01-15"
                 }
             ],
@@ -432,9 +494,9 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
                 {
                 "url": "https://...",
                 "title": "Article title",
-                "snippet": "Key excerpt",
+                "snippet": "Key excerpt showing claim is false",
                 "credibilityScore": 0.80,
-                "sourceType": "mainstream-news",
+                "sourceType": "fact-check",
                 "publishDate": "2024-02-10"
                 }
             ],
@@ -442,7 +504,7 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
                 {
                 "url": "https://snopes.com/...",
                 "title": "Fact-check title",
-                "verdict": "False",
+                "verdict": "True" | "False" | "Mixed",
                 "source": "Snopes"
                 }
             ],
@@ -454,7 +516,7 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
             },
             "evidenceScore": 0.75,
             "confidence": 0.85,
-            "verdict": "contradicted",
+            "verdict": "supported" | "contradicted" | "mixed" | "insufficient",
             "explanation": "Brief summary of evidence analysis",
             "topSources": ["URL1", "URL2", "URL3"]
             }
@@ -462,10 +524,13 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
             Scoring guide:
             - evidenceScore: 0-1 (0=strongly contradicted, 0.5=mixed/unclear, 1=strongly supported)
             - confidence: 0-1 (how confident you are based on source quality and quantity)
-            - verdict: "supported" | "contradicted" | "mixed" | "insufficient"
+            - verdict: 
+              * "supported" = credible sources confirm the claim is TRUE
+              * "contradicted" = fact-checkers or credible sources say claim is FALSE
+              * "mixed" = some sources support, some contradict
+              * "insufficient" = not enough evidence to determine (DEFAULT if unsure)
 
-            Prioritize fact-check verdicts. If Snopes/PolitiFact/FactCheck.org rated it False, your verdict should be "contradicted".
-            Weight sources by credibility. One excellent fact-check > five low-quality blogs.
+            CRITICAL: If search results show information that CONFIRMS the claim (e.g., official standings, news reports with matching facts), the verdict should be "supported", NOT "contradicted".
 
             No preamble, just JSON.`;
 
@@ -479,12 +544,23 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
             ? synthesisMessage.content
             : JSON.stringify(synthesisMessage.content);
 
+        console.log('\n📝 [CITATION_AGENT] LLM Response (first 500 chars):');
+        console.log(content.substring(0, 500));
+
         const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
 
         const synthesis = JSON.parse(jsonStr);
 
-        return {
+        console.log('\n🔍 [CITATION_AGENT] Parsed synthesis:');
+        console.log(`   verdict: "${synthesis.verdict}"`);
+        console.log(`   evidenceScore: ${synthesis.evidenceScore}`);
+        console.log(`   confidence: ${synthesis.confidence}`);
+        console.log(`   supportingEvidence: ${synthesis.supportingEvidence?.length || 0} items`);
+        console.log(`   contradictingEvidence: ${synthesis.contradictingEvidence?.length || 0} items`);
+        console.log(`   explanation: ${synthesis.explanation?.substring(0, 100)}...`);
+
+        const result = {
             supportingEvidence: synthesis.supportingEvidence || [],
             contradictingEvidence: synthesis.contradictingEvidence || [],
             factCheckResults: synthesis.factCheckResults || [],
@@ -493,15 +569,22 @@ async function synthesizeEvidence(state: typeof CitationEvidenceState.State) {
             confidence: synthesis.confidence ?? 0.5,
             verdict: synthesis.verdict || "insufficient",
             explanation: synthesis.explanation || "No explanation provided",
-            topSources: synthesis.topSources || []
+            topSources: synthesis.topSources || [],
+            // Add isCredible for orchestrator compatibility
+            isCredible: synthesis.verdict === 'supported' || synthesis.evidenceScore >= 0.6
         };
+
+        console.log(`\n✅ [CITATION_AGENT] Final verdict: "${result.verdict}", isCredible: ${result.isCredible}`);
+
+        return result;
     } catch (error) {
-        console.error("Failed to parse synthesis:", error);
+        console.error("❌ [CITATION_AGENT] Failed to parse synthesis:", error);
         return {
             evidenceScore: 0.5,
             confidence: 0.3,
             verdict: "insufficient" as const,
-            explanation: "Error processing evidence synthesis"
+            explanation: "Error processing evidence synthesis",
+            isCredible: true  // Default to true (unclear), not false
         };
     }
 }
