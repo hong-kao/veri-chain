@@ -87,8 +87,9 @@ model AgentResult {
 
   verdict       VerdictType?
   confidence    Float?
-  flags         String?   // JSON string
-  raw_result    String?   // JSON blob
+  reasoning     String?   // 2-3 sentence explanation from agent
+  flags         String?   // json string
+  raw_result    String?   // full json blob
 
   created_at    DateTime  @default(now())
 

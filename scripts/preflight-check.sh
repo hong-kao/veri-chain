@@ -8,8 +8,8 @@ echo "=========================="
 if command -v node &>/dev/null; then
   NODE_VERSION=$(node --version)
   MAJOR=$(echo "$NODE_VERSION" | sed 's/v//;s/\..*//')
-  if [ "$MAJOR" -lt 18 ]; then
-    echo "[error] node $NODE_VERSION detected -- version 18+ required"
+  if [ "$MAJOR" -lt 20 ]; then
+    echo "[error] node $NODE_VERSION detected -- version 20+ required (prisma v7 requirement)"
     exit 1
   fi
   echo "[ok] node $NODE_VERSION"
