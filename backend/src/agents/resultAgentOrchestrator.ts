@@ -20,11 +20,11 @@ import VerificationMarketABI from '../abis/VerificationMarket.json' with { type:
 import ReputationABI from '../abis/Reputation.json' with { type: "json" };
 import VerifierBadgeABI from '../abis/VerifierBadge.json' with { type: "json" };
 
-// Deployed Addresses (Sepolia)
-const CLAIM_REGISTRY_ADDRESS = "0xB9363715c69992Fada1448C05165b97d23D83559";
-const VERIFICATION_MARKET_ADDRESS = "0x2CF4e9F01fEe292Dfbf2449A9027F64c38254ecF";
-const REPUTATION_ADDRESS = "0x81dD1cb41329cDfc58932d36AD21CDD8e894f348";
-const VERIFIER_BADGE_ADDRESS = "0xe24458A4Cd02B4A228B5ea6032A7055c3c096f8b";
+// deployed addresses (base sepolia -- 2026-05-11)
+const CLAIM_REGISTRY_ADDRESS = "0xeD67F63B90Af9c436B36A37f048f259568F05ac5";
+const VERIFICATION_MARKET_ADDRESS = "0xCa8f98130a054F7Ec42cf36416af9E4B892B0A28";
+const REPUTATION_ADDRESS = "0x98559C71D8D56766BA0FBAC7600b8e689C23f809";
+const VERIFIER_BADGE_ADDRESS = "0x6C56671f48451188E8DF4Ffa4f1B398164865a13";
 
 interface ClaimInput {
   submitterId: number;
