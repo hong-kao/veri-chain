@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: verichain
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: verichain
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      # database_url is set here so compose always uses the 'db' service hostname.
+      # do not put DATABASE_URL in backend/.env -- this block owns it.
+      DATABASE_URL: postgresql://verichain:secret@db:5432/verichain
+      PORT: 3001
+    env_file:
+      - ./backend/.env
+    ports:
+      - "3001:3001"
+    volumes:
+      # mount source for hot reload in dev
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env
+    # --host 0.0.0.0 is required -- vite binds to 127.0.0.1 by default inside
+    # the container, which makes the port mapping unreachable from the host browser
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    ports:
+      - "5173:5173"
+    volumes:
+      # mount source for hot reload in dev
+      - ./frontend/src:/app/src
+
+volumes:
+  pgdata:
