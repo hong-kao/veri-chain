@@ -1,24 +1,8 @@
-/**
- * Simple Claim Scoring - Clean Implementation
- * 
- * Design principles:
- * 1. Agents return verdicts: TRUE, FALSE, or UNCLEAR
- * 2. Each FALSE verdict is evidence the claim is misinformation
- * 3. Simple weighted voting: count FALSE vs TRUE verdicts
- * 4. Final verdict based on majority consensus with confidence weighting
- */
+// simple claim scoring -- weighted voting across agent verdicts.
+// no llm calls here. explanation is a synchronous template built from verdict data.
 
-import { ChatOpenAI } from '@langchain/openai';
 import { env } from '../config/env.config.js';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
-const llm = new ChatOpenAI({
-    apiKey: env.OPENAI_API_KEY || '',
-    model: "gpt-4o-mini",
-    temperature: 0.2
-});
-
-// Simple input types
 export interface ClaimMetadata {
     claimId: string;
     normalizedText: string;
@@ -29,14 +13,14 @@ export interface ClaimMetadata {
 export interface AgentVerdict {
     agentName: string;
     verdict: 'TRUE' | 'FALSE' | 'UNCLEAR';
-    confidence: number;  // 0-1
-    weight: number;      // How important is this agent's opinion
+    confidence: number;
+    weight: number;
 }
 
 export interface ScoringResult {
     aiVerdict: 'TRUE' | 'FALSE' | 'UNCLEAR';
-    aiConfidence: number;  // 0-1
-    overallScore: number;  // 0-100 (0=definitely false, 100=definitely true)
+    aiConfidence: number;
+    overallScore: number;
     explanation: string;
     breakdown: {
         trueVotes: number;
@@ -48,38 +32,24 @@ export interface ScoringResult {
     warnings: string[];
 }
 
-// Agent weights - how much each agent's opinion matters
-// IMPORTANT: citation_evidence is most important because it checks fact-check sites!
+// citation_evidence is weighted highest -- it finds real fact-check evidence
 const AGENT_WEIGHTS: Record<string, number> = {
-    'citation_evidence': 0.40,      // HIGHEST - checks fact-check sites, finds real evidence
-    'logic_consistency': 0.20,      // Medium - only checks internal logic, not factual accuracy
-    'source_credibility': 0.05,     // Low - just source quality, not claim truth
-    'social_evidence': 0.15,        // Medium - social signals can be misleading
-    'media_forensics': 0.10,        // Medium - media manipulation detection
-    'propagation_pattern': 0.10,    // Medium - spread patterns
+    citation_evidence:   0.40,
+    logic_consistency:   0.20,
+    social_evidence:     0.15,
+    media_forensics:     0.10,
+    propagation_pattern: 0.10,
+    source_credibility:  0.05,
 };
 
-/**
- * Normalize verdict to uppercase
- */
 function normalizeVerdict(verdict: string | undefined): 'TRUE' | 'FALSE' | 'UNCLEAR' {
     if (!verdict) return 'UNCLEAR';
     const v = verdict.toUpperCase();
-    // Handle Prisma enum values (false_, true_) AND uppercase strings
     if (v === 'TRUE' || v === 'TRUE_' || v === 'VERIFIED') return 'TRUE';
     if (v === 'FALSE' || v === 'FALSE_' || v === 'FAKE' || v === 'REJECTED') return 'FALSE';
     return 'UNCLEAR';
 }
 
-/**
- * Calculate the overall score based on agent verdicts
- * 
- * Simple logic:
- * - FALSE verdicts pull score toward 0 (claim is misinformation)
- * - TRUE verdicts pull score toward 100 (claim is accurate)
- * - UNCLEAR verdicts pull score toward 50 (uncertain)
- * - Each verdict is weighted by agent importance AND agent confidence
- */
 function calculateScore(verdicts: AgentVerdict[]): {
     score: number;
     trueWeight: number;
@@ -95,75 +65,43 @@ function calculateScore(verdicts: AgentVerdict[]): {
     for (const v of verdicts) {
         const effectiveWeight = v.weight * v.confidence;
         totalWeight += effectiveWeight;
-
-        switch (v.verdict) {
-            case 'TRUE':
-                trueWeight += effectiveWeight;
-                break;
-            case 'FALSE':
-                falseWeight += effectiveWeight;
-                break;
-            case 'UNCLEAR':
-                unclearWeight += effectiveWeight;
-                break;
-        }
+        if (v.verdict === 'TRUE') trueWeight += effectiveWeight;
+        else if (v.verdict === 'FALSE') falseWeight += effectiveWeight;
+        else unclearWeight += effectiveWeight;
     }
 
     if (totalWeight === 0) {
         return { score: 50, trueWeight: 0, falseWeight: 0, unclearWeight: 0, totalWeight: 0 };
     }
 
-    // Calculate weighted score
-    // TRUE -> 100, FALSE -> 0, UNCLEAR -> 50
+    // true -> 100, false -> 0, unclear -> 50
     const score = (trueWeight * 100 + falseWeight * 0 + unclearWeight * 50) / totalWeight;
-
     return { score, trueWeight, falseWeight, unclearWeight, totalWeight };
 }
 
-/**
- * Determine final verdict based on score
- */
 function determineVerdict(score: number): 'TRUE' | 'FALSE' | 'UNCLEAR' {
     if (score >= 65) return 'TRUE';
     if (score <= 35) return 'FALSE';
     return 'UNCLEAR';
 }
 
-/**
- * Calculate confidence based on agent confidences and decisiveness of score
- * Less aggressive: caps at 95%, blends factors instead of taking max
- */
 function calculateConfidence(score: number, verdicts: AgentVerdict[]): number {
     if (verdicts.length === 0) return 0.5;
 
-    // Calculate weighted average of agent confidences
     let totalWeight = 0;
     let weightedConfidence = 0;
     for (const v of verdicts) {
-        const weight = v.weight * v.confidence;
-        weightedConfidence += v.confidence * weight;
-        totalWeight += weight;
+        const w = v.weight * v.confidence;
+        weightedConfidence += v.confidence * w;
+        totalWeight += w;
     }
     const avgConfidence = totalWeight > 0 ? weightedConfidence / totalWeight : 0.5;
+    const decisiveness = Math.abs(score - 50) / 50;
 
-    // How decisive is the verdict? (far from 50)
-    const decisiveness = Math.abs(score - 50) / 50;  // 0-1
-
-    // Blend average confidence with decisiveness (60% avgConf, 40% decisiveness)
-    // This gives more weight to actual agent confidence levels
-    const blendedConfidence = avgConfidence * 0.6 + decisiveness * 0.4;
-
-    // Cap at 95% - never claim absolute certainty
-    const finalConfidence = Math.min(0.95, blendedConfidence);
-
-    console.log(`[Confidence] score=${score.toFixed(1)}, avgConf=${avgConfidence.toFixed(2)}, decisiveness=${decisiveness.toFixed(2)}, final=${finalConfidence.toFixed(2)}`);
-
-    return finalConfidence;
+    // 60% from avg agent confidence, 40% from how decisive the score is
+    return Math.min(0.95, avgConfidence * 0.6 + decisiveness * 0.4);
 }
 
-/**
- * Extract strong signals and warnings from verdicts
- */
 function extractSignalsAndWarnings(verdicts: AgentVerdict[]): {
     strongSignals: string[];
     warnings: string[];
@@ -184,54 +122,29 @@ function extractSignalsAndWarnings(verdicts: AgentVerdict[]): {
     return { strongSignals, warnings };
 }
 
-/**
- * Generate a human-readable explanation
- */
-async function generateExplanation(
-    claim: ClaimMetadata,
+// synchronous template -- no llm call
+function buildExplanation(
     verdict: 'TRUE' | 'FALSE' | 'UNCLEAR',
     score: number,
     verdicts: AgentVerdict[]
-): Promise<string> {
-    const falseAgents = verdicts.filter(v => v.verdict === 'FALSE');
-    const trueAgents = verdicts.filter(v => v.verdict === 'TRUE');
+): string {
+    const falseAgents = verdicts.filter(v => v.verdict === 'FALSE').map(v => v.agentName);
+    const trueAgents  = verdicts.filter(v => v.verdict === 'TRUE').map(v => v.agentName);
+    const scoreStr    = score.toFixed(0);
 
-    const systemPrompt = `Generate a 2-3 sentence explanation for why a claim was rated as ${verdict}. Be concise and factual.`;
-
-    const userPrompt = `
-Claim: "${claim.normalizedText}"
-Verdict: ${verdict} (score: ${score.toFixed(1)}/100)
-
-Agent analysis:
-- ${falseAgents.length} agents say FALSE: ${falseAgents.map(a => a.agentName).join(', ') || 'none'}
-- ${trueAgents.length} agents say TRUE: ${trueAgents.map(a => a.agentName).join(', ') || 'none'}
-
-Generate a brief explanation.`;
-
-    try {
-        const response = await llm.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(userPrompt)
-        ]);
-        return typeof response.content === 'string'
-            ? response.content.trim()
-            : JSON.stringify(response.content);
-    } catch (error) {
-        // Fallback explanation
-        if (verdict === 'FALSE') {
-            return `This claim was rated FALSE based on analysis from ${falseAgents.length} agents with an overall score of ${score.toFixed(0)}/100. The evidence suggests this is misinformation.`;
-        } else if (verdict === 'TRUE') {
-            return `This claim was rated TRUE with an overall score of ${score.toFixed(0)}/100. Supporting evidence was found from ${trueAgents.length} analysis agents.`;
-        }
-        return `This claim could not be definitively verified. The analysis was inconclusive with a score of ${score.toFixed(0)}/100.`;
+    if (verdict === 'FALSE') {
+        const agentList = falseAgents.length ? falseAgents.join(', ') : 'multiple agents';
+        return `this claim was rated false (score ${scoreStr}/100). analysis from ${agentList} indicates it is likely misinformation. the weighted evidence strongly contradicts the claim.`;
     }
+
+    if (verdict === 'TRUE') {
+        const agentList = trueAgents.length ? trueAgents.join(', ') : 'multiple agents';
+        return `this claim was rated true (score ${scoreStr}/100). ${agentList} found supporting evidence. the weighted analysis supports the claim's accuracy.`;
+    }
+
+    return `this claim could not be definitively verified (score ${scoreStr}/100). the analysis was split or inconclusive -- community voting may help resolve it.`;
 }
 
-/**
- * MAIN FUNCTION: Score a claim based on agent results
- * 
- * This is the simple, clean replacement for the old complex scoring system.
- */
 export async function scoreClaimSimple(
     claim: ClaimMetadata,
     agentResults: Array<{
@@ -240,42 +153,18 @@ export async function scoreClaimSimple(
         confidence: number;
     }>
 ): Promise<ScoringResult> {
-    console.log(`\n📊 [SimpleScoring] Scoring claim ${claim.claimId}...`);
-
-    // Convert agent results to verdicts
     const verdicts: AgentVerdict[] = agentResults.map(ar => ({
-        agentName: ar.agent_name,
-        verdict: normalizeVerdict(ar.verdict),
+        agentName:  ar.agent_name,
+        verdict:    normalizeVerdict(ar.verdict),
         confidence: ar.confidence ?? 0.5,
-        weight: AGENT_WEIGHTS[ar.agent_name] ?? 0.1
+        weight:     AGENT_WEIGHTS[ar.agent_name] ?? 0.1
     }));
 
-    // Log what we're working with
-    console.log(`   Verdicts received:`);
-    for (const v of verdicts) {
-        console.log(`     - ${v.agentName}: ${v.verdict} (${Math.round(v.confidence * 100)}% conf, weight ${v.weight})`);
-    }
-
-    // Calculate score
     const { score, trueWeight, falseWeight, unclearWeight, totalWeight } = calculateScore(verdicts);
-    console.log(`   Raw score: ${score.toFixed(1)}/100`);
-    console.log(`   Weights - TRUE: ${trueWeight.toFixed(2)}, FALSE: ${falseWeight.toFixed(2)}, UNCLEAR: ${unclearWeight.toFixed(2)}`);
-
-    // Determine verdict
-    const aiVerdict = determineVerdict(score);
-    console.log(`   Final verdict: ${aiVerdict}`);
-
-    // Calculate confidence
+    const aiVerdict    = determineVerdict(score);
     const aiConfidence = calculateConfidence(score, verdicts);
-    console.log(`   Confidence: ${(aiConfidence * 100).toFixed(0)}%`);
-
-    // Extract signals
     const { strongSignals, warnings } = extractSignalsAndWarnings(verdicts);
-
-    // Generate explanation
-    const explanation = await generateExplanation(claim, aiVerdict, score, verdicts);
-
-    console.log(`✅ [SimpleScoring] Complete: ${aiVerdict} (${(aiConfidence * 100).toFixed(0)}%)\n`);
+    const explanation  = buildExplanation(aiVerdict, score, verdicts);
 
     return {
         aiVerdict,
@@ -283,8 +172,8 @@ export async function scoreClaimSimple(
         overallScore: score,
         explanation,
         breakdown: {
-            trueVotes: verdicts.filter(v => v.verdict === 'TRUE').length,
-            falseVotes: verdicts.filter(v => v.verdict === 'FALSE').length,
+            trueVotes:   verdicts.filter(v => v.verdict === 'TRUE').length,
+            falseVotes:  verdicts.filter(v => v.verdict === 'FALSE').length,
             unclearVotes: verdicts.filter(v => v.verdict === 'UNCLEAR').length,
             totalWeight
         },
@@ -293,5 +182,4 @@ export async function scoreClaimSimple(
     };
 }
 
-// Re-export as aggregateAndScore for compatibility with existing code
 export { scoreClaimSimple as aggregateAndScoreSimple };
