@@ -1,337 +1,146 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { FcGoogle } from "react-icons/fc";
-
-import "./Auth.css";
-
-// Password validation function
-const validatePassword = (password: string): { valid: boolean; errors: string[] } => {
-    const errors: string[] = [];
-
-    if (password.length < 8) {
-        errors.push("At least 8 characters");
-    }
-    if (!/[A-Z]/.test(password)) {
-        errors.push("1 uppercase letter");
-    }
-    if (!/[a-z]/.test(password)) {
-        errors.push("1 lowercase letter");
-    }
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-        errors.push("1 special character");
-    }
-
-    return { valid: errors.length === 0, errors };
-};
+import { useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function Auth() {
+    const { connectWallet, isConnected, isLoading } = useAuth();
     const navigate = useNavigate();
-    const { connectWallet, loginWithOAuth, loginWithEmail, registerWithEmail } = useAuth();
+    const location = useLocation();
 
-    const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
+    const from = (location.state as any)?.from?.pathname || '/claims';
 
-    // Login form state
-    const [loginEmail, setLoginEmail] = useState("");
-    const [loginPassword, setLoginPassword] = useState("");
+    useEffect(() => {
+        if (isConnected) navigate(from, { replace: true });
+    }, [isConnected, navigate, from]);
 
-    // Signup form state
-    const [signupFullName, setSignupFullName] = useState("");
-    const [signupEmail, setSignupEmail] = useState("");
-    const [signupPassword, setSignupPassword] = useState("");
-    const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
-
-    // Password validation state
-    const passwordValidation = validatePassword(signupPassword);
-    const passwordsMatch = signupPassword === signupConfirmPassword;
-
-    // Form validation
-    const isLoginFormValid = loginEmail.trim() !== '' && loginPassword.trim() !== '';
-    const isSignupFormValid = signupFullName.trim() !== '' && signupEmail.trim() !== '' && passwordValidation.valid && passwordsMatch;
-
-    const handleWalletConnect = async () => {
-        setLoading(true);
-        setError("");
-
+    const handleConnect = async () => {
         try {
-            console.log('🔗 Auth page: Initiating wallet connection...');
             await connectWallet();
-            console.log('✅ Wallet connected successfully');
-            navigate("/onboarding");
         } catch (err: any) {
-            console.error('❌ Wallet connection error:', err);
-            setError(err.message || "Failed to connect wallet. Please try again.");
-            setLoading(false);
-        }
-    };
-
-    const handleEmailLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError("");
-
-        try {
-            const { needsOnboarding } = await loginWithEmail(loginEmail, loginPassword);
-
-            if (needsOnboarding) {
-                navigate("/onboarding");
-            } else {
-                navigate("/dashboard");
-            }
-        } catch (err: any) {
-            console.error('❌ Login error:', err);
-            setError(err.response?.data?.error || err.message || "Failed to login. Please try again.");
-            setLoading(false);
-        }
-    };
-
-    const handleEmailSignup = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError("");
-
-        // Validate password
-        if (!passwordValidation.valid) {
-            setError("Password does not meet requirements");
-            setLoading(false);
-            return;
-        }
-
-        // Check passwords match
-        if (!passwordsMatch) {
-            setError("Passwords do not match");
-            setLoading(false);
-            return;
-        }
-
-        try {
-            await registerWithEmail(signupFullName, signupEmail, signupPassword, signupConfirmPassword);
-            navigate("/onboarding");
-        } catch (err: any) {
-            console.error('❌ Signup error:', err);
-            setError(err.response?.data?.error || err.message || "Failed to sign up. Please try again.");
-            setLoading(false);
+            console.error('wallet connect failed:', err.message);
         }
     };
 
     return (
         <div className="auth-page">
-            <div className="grain-bg"></div>
-
-            <nav className="auth-nav">
-                <a href="/" className="auth-nav-logo">
-                    VeriChain
-                </a>
-                <div className="auth-nav-links">
-                    <a href="/">Home</a>
-                </div>
-            </nav>
-
-            <div className="auth-content">
-                <div className="auth-header">
-                    <h1 className="auth-main-title">Welcome to VeriChain</h1>
-                    <p className="auth-subtitle">Connect your wallet or sign in to get started</p>
+            <div className="auth-card">
+                <div className="auth-logo">
+                    <span className="auth-logo-icon">⛓</span>
+                    <h1>VeriChain</h1>
+                    <p className="auth-tagline">decentralized fact verification</p>
                 </div>
 
-                <div className="auth-modal">
-                    {/* Tab Navigation */}
-                    <div className="auth-tabs">
-                        <button
-                            className={`auth-tab ${activeTab === 'login' ? 'active' : ''}`}
-                            onClick={() => { setActiveTab('login'); setError(''); }}
-                        >
-                            Log In
-                        </button>
-                        <button
-                            className={`auth-tab ${activeTab === 'signup' ? 'active' : ''}`}
-                            onClick={() => { setActiveTab('signup'); setError(''); }}
-                        >
-                            Sign Up
-                        </button>
-                    </div>
+                <div className="auth-body">
+                    <p className="auth-description">
+                        connect your wallet to submit claims, vote on verdicts, and earn rewards.
+                    </p>
 
-                    {error && <div className="auth-error">{error}</div>}
+                    <button
+                        id="connect-wallet-btn"
+                        className="btn-connect"
+                        onClick={handleConnect}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <span className="btn-spinner" />
+                        ) : (
+                            <>
+                                <span className="btn-icon">🦊</span>
+                                connect metamask
+                            </>
+                        )}
+                    </button>
 
-                    {/* Login Form */}
-                    {activeTab === 'login' && (
-                        <form className="auth-form" onSubmit={handleEmailLogin}>
-                            <div className="auth-form-group">
-                                <label>Email</label>
-                                <input
-                                    type="email"
-                                    className="auth-input"
-                                    placeholder="Enter your email"
-                                    value={loginEmail}
-                                    onChange={(e) => setLoginEmail(e.target.value)}
-                                    required
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <div className="auth-form-group">
-                                <label>Password</label>
-                                <div className="password-input-wrapper">
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        className="auth-input"
-                                        placeholder="Enter your password"
-                                        value={loginPassword}
-                                        onChange={(e) => setLoginPassword(e.target.value)}
-                                        required
-                                        disabled={loading}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="password-toggle"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                        {showPassword ? '👁️' : '👁️‍🗨️'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <button
-                                type="submit"
-                                className="auth-btn-primary"
-                                disabled={loading || !isLoginFormValid}
-                            >
-                                {loading ? "LOGGING IN..." : "LOG IN"}
-                            </button>
-                        </form>
-                    )}
-
-                    {/* Signup Form */}
-                    {activeTab === 'signup' && (
-                        <form className="auth-form" onSubmit={handleEmailSignup}>
-                            <div className="auth-form-group">
-                                <label>Full Name</label>
-                                <input
-                                    type="text"
-                                    className="auth-input"
-                                    placeholder="Enter your full name"
-                                    value={signupFullName}
-                                    onChange={(e) => setSignupFullName(e.target.value)}
-                                    required
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <div className="auth-form-group">
-                                <label>Email</label>
-                                <input
-                                    type="email"
-                                    className="auth-input"
-                                    placeholder="Enter your email"
-                                    value={signupEmail}
-                                    onChange={(e) => setSignupEmail(e.target.value)}
-                                    required
-                                    disabled={loading}
-                                />
-                            </div>
-
-                            <div className="auth-form-group">
-                                <label>Password</label>
-                                <div className="password-input-wrapper">
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        className="auth-input"
-                                        placeholder="Create a password"
-                                        value={signupPassword}
-                                        onChange={(e) => setSignupPassword(e.target.value)}
-                                        required
-                                        disabled={loading}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="password-toggle"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                        {showPassword ? '👁️' : '👁️‍🗨️'}
-                                    </button>
-                                </div>
-
-                                {/* Password Requirements */}
-                                {signupPassword && (
-                                    <div className="password-requirements">
-                                        <div className={`requirement ${signupPassword.length >= 8 ? 'met' : ''}`}>
-                                            ✓ At least 8 characters
-                                        </div>
-                                        <div className={`requirement ${/[A-Z]/.test(signupPassword) ? 'met' : ''}`}>
-                                            ✓ 1 uppercase letter
-                                        </div>
-                                        <div className={`requirement ${/[a-z]/.test(signupPassword) ? 'met' : ''}`}>
-                                            ✓ 1 lowercase letter
-                                        </div>
-                                        <div className={`requirement ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(signupPassword) ? 'met' : ''}`}>
-                                            ✓ 1 special character
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="auth-form-group">
-                                <label>Confirm Password</label>
-                                <input
-                                    type={showPassword ? "text" : "password"}
-                                    className="auth-input"
-                                    placeholder="Confirm your password"
-                                    value={signupConfirmPassword}
-                                    onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                                    required
-                                    disabled={loading}
-                                />
-                                {signupConfirmPassword && !passwordsMatch && (
-                                    <div className="password-mismatch">Passwords do not match</div>
-                                )}
-                                {signupConfirmPassword && passwordsMatch && signupPassword && (
-                                    <div className="password-match">Passwords match ✓</div>
-                                )}
-                            </div>
-
-                            <button
-                                type="submit"
-                                className="auth-btn-primary"
-                                disabled={loading || !isSignupFormValid}
-                            >
-                                {loading ? "SIGNING UP..." : "SIGN UP"}
-                            </button>
-                        </form>
-                    )}
-
-                    <div className="auth-divider">
-                        <span>OR</span>
-                    </div>
-
-                    <div className="wallet-options">
-                        <button
-                            className="wallet-option"
-                            onClick={handleWalletConnect}
-                            disabled={loading}
-                        >
-                            {loading ? "CONNECTING..." : "CONNECT WALLET"}
-                        </button>
-                    </div>
-
-                    <div className="google-section">
-                        <button
-                            className="google-option"
-                            onClick={() => loginWithOAuth('oauth_google')}
-                            disabled={loading}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
-                        >
-                            <FcGoogle size={24} />
-                            CONTINUE WITH GOOGLE
-                        </button>
-                    </div>
-                </div>
-
-                <div className="auth-footer">
-                    <p>By connecting, you agree to our Terms of Service and Privacy Policy</p>
+                    <p className="auth-hint">
+                        no account needed — your wallet is your identity.
+                    </p>
                 </div>
             </div>
+
+            <style>{`
+                .auth-page {
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: radial-gradient(ellipse at 60% 20%, #0f1b3d 0%, #050d1a 70%);
+                    padding: 1rem;
+                }
+                .auth-card {
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 20px;
+                    padding: 2.5rem 2rem;
+                    width: 100%;
+                    max-width: 380px;
+                    backdrop-filter: blur(12px);
+                    text-align: center;
+                }
+                .auth-logo { margin-bottom: 2rem; }
+                .auth-logo-icon {
+                    font-size: 2.5rem;
+                    display: block;
+                    margin-bottom: 0.5rem;
+                }
+                .auth-logo h1 {
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    margin: 0 0 0.25rem;
+                }
+                .auth-tagline {
+                    color: rgba(255,255,255,0.4);
+                    font-size: 0.8rem;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    margin: 0;
+                }
+                .auth-description {
+                    color: rgba(255,255,255,0.6);
+                    font-size: 0.9rem;
+                    line-height: 1.6;
+                    margin-bottom: 1.5rem;
+                }
+                .btn-connect {
+                    width: 100%;
+                    padding: 0.875rem 1.5rem;
+                    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                    border: none;
+                    border-radius: 12px;
+                    color: #fff;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.6rem;
+                    transition: opacity 0.2s, transform 0.1s;
+                    letter-spacing: 0.02em;
+                }
+                .btn-connect:hover:not(:disabled) {
+                    opacity: 0.9;
+                    transform: translateY(-1px);
+                }
+                .btn-connect:active:not(:disabled) { transform: translateY(0); }
+                .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+                .btn-icon { font-size: 1.2rem; }
+                .btn-spinner {
+                    width: 18px; height: 18px;
+                    border: 2px solid rgba(255,255,255,0.3);
+                    border-top-color: #fff;
+                    border-radius: 50%;
+                    animation: spin 0.7s linear infinite;
+                }
+                @keyframes spin { to { transform: rotate(360deg); } }
+                .auth-hint {
+                    margin-top: 1rem;
+                    color: rgba(255,255,255,0.3);
+                    font-size: 0.78rem;
+                }
+            `}</style>
         </div>
     );
 }

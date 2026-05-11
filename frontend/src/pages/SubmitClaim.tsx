@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import { registerClaimOnChain, isWalletConnected } from "../services/contracts";
 import AppNav from "../components/AppNav";
-import ClaimDetailsModal from "../components/ClaimDetailsModal";
 import "../styles/AppPages.css";
 
 const QUOTES = [
@@ -15,9 +15,9 @@ const QUOTES = [
 
 export default function SubmitClaim() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Restore state from sessionStorage on mount
     const [claimText, setClaimText] = useState(() => {
         const saved = sessionStorage.getItem('pendingClaimText');
         return saved || "";
@@ -36,7 +36,6 @@ export default function SubmitClaim() {
         const saved = sessionStorage.getItem('pendingClaimResponse');
         return saved ? JSON.parse(saved) : null;
     });
-    const [showModal, setShowModal] = useState(false);
 
     const [randomQuote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
@@ -277,10 +276,12 @@ export default function SubmitClaim() {
                             {/* Simplified display */}
                             <p className="response-text">{response.explanation}</p>
 
-                            {/* More Details button */}
-                            <button className="new-claim-btn" onClick={() => setShowModal(true)} style={{ marginBottom: '1rem' }}>
-                                More Details
-                            </button>
+                            {/* View Details button - navigate to claim page */}
+                            {response.claimId && (
+                                <button className="new-claim-btn" onClick={() => navigate(`/claims/${response.claimId}`)} style={{ marginBottom: '1rem' }}>
+                                    View Details
+                                </button>
+                            )}
 
                             <button className="new-claim-btn" onClick={resetChat}>
                                 Submit Another Claim
@@ -368,27 +369,6 @@ export default function SubmitClaim() {
                 )}
             </div>
 
-            {/* Claim Details Modal */}
-            {showModal && response && response.claimId && (
-                <ClaimDetailsModal
-                    claim={{
-                        id: response.claimId,
-                        statement: claimText,
-                        category: "General",
-                        verdict: response.verdict,
-                        confidence: response.confidence,
-                        status: response.needsVoting ? 'active' : 'completed',
-                        submittedAt: new Date().toISOString(),
-                        resolvedAt: response.needsVoting ? null : new Date().toISOString()
-                    }}
-                    agentResults={response.agentResults}
-                    explanation={response.explanation}
-                    showVoting={false}
-                    onClose={() => setShowModal(false)}
-                    navigateOnClose="/claims"
-                    customButtonText={response.needsVoting ? "See Voting Status" : "Go to Claims Page"}
-                />
-            )}
         </div>
     );
 }
