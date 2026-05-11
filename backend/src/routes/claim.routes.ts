@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
-import ResultOrchestrator from '../agents/resultAgentOrchestrator.js';
+import { orchestrator } from '../agents/resultAgentOrchestrator.js';
 import prisma from '../config/db.config.js';
 import { env } from '../config/env.config.js';
 
@@ -9,14 +9,13 @@ const JWT_SECRET = env.JWT_SECRET || 'verichain-secret-fallback';
 
 const router = express.Router();
 
-// Configure multer for file uploads
+// configure multer for file uploads
 const upload = multer({
     dest: 'uploads/',
     limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB limit
+        fileSize: 50 * 1024 * 1024,
     },
     fileFilter: (req, file, cb) => {
-        // Allow images and videos
         const allowedMimes = [
             'image/jpeg', 'image/png', 'image/gif', 'image/webp',
             'video/mp4', 'video/webm', 'video/quicktime'
@@ -28,20 +27,6 @@ const upload = multer({
         }
     }
 });
-
-// Initialize Orchestrator (only if blockchain env vars exist)
-let orchestrator: ResultOrchestrator | null = null;
-if (env.RPC_URL && env.PRIVATE_KEY) {
-    try {
-        orchestrator = new ResultOrchestrator(
-            env.RPC_URL,
-            env.PRIVATE_KEY
-        );
-        console.log('✅ ResultOrchestrator initialized with blockchain');
-    } catch (error) {
-        console.warn('⚠️  ResultOrchestrator init failed, running in AI-only mode:', error);
-    }
-}
 
 /**
  * POST /api/claims/submit
@@ -142,38 +127,26 @@ router.post('/submit', upload.fields([
             claimHash: claimHash || null            // User-provided claim hash
         };
 
-        if (orchestrator) {
-            // Full orchestrator flow (with blockchain)
-            try {
-                const claimId = await orchestrator.processClaimIntake(claimInput);
+        try {
+            const claimId = await orchestrator.registerClaim(claimInput);
 
-                console.log(`✅ Claim ${claimId} created, starting background processing...`);
+            // fire-and-forget background pipeline
+            processClaimBackground(claimId).catch(err => {
+                console.error(`background processing failed for claim ${claimId}:`, err);
+            });
 
-                // Start background processing (don't await - let it run in background)
-                processClaimBackground(claimId, orchestrator).catch(err => {
-                    console.error(`❌ Background processing failed for claim ${claimId}:`, err);
-                });
-
-                return res.status(201).json({
-                    success: true,
-                    claimId,
-                    status: 'processing',
-                    message: 'Claim submitted successfully. AI analysis in progress.',
-                    pollingUrl: `/api/claims/${claimId}/status`
-                });
-            } catch (error: any) {
-                console.error('Orchestrator error:', error);
-                return res.status(500).json({
-                    error: 'Failed to process claim with orchestrator',
-                    details: error.message
-                });
-            }
-        } else {
-            // AI-only mode (no blockchain) - direct agent calls
-            return res.status(501).json({
-                error: 'Orchestrator not configured',
-                message: 'Please configure RPC_URL and PRIVATE_KEY in .env for full functionality',
-                receivedClaim: claim.substring(0, 100)
+            return res.status(201).json({
+                success: true,
+                claimId,
+                status: 'processing',
+                message: 'claim submitted. ai analysis in progress.',
+                pollingUrl: `/api/claims/${claimId}/status`
+            });
+        } catch (error: any) {
+            console.error('orchestrator error:', error);
+            return res.status(500).json({
+                error: 'failed to process claim',
+                details: error.message
             });
         }
 
@@ -375,21 +348,16 @@ function extractUrls(text: string): string[] {
 /**
  * Helper: Background processing of claim through all agents
  */
-async function processClaimBackground(claimId: number, orch: ResultOrchestrator) {
+async function processClaimBackground(claimId: number) {
     try {
-        console.log(`🚀 Starting background processing for claim ${claimId}...`);
+        // phase 2: run analysis agents
+        await orchestrator.runAnalysisAgents(claimId);
 
-        // Phase 2: Run Analysis Agents (textForensics, citation, sourceCred, social, media, pattern)
-        await orch.runAnalysisAgents(claimId);
-        console.log(`  ✓ Phase 2: Analysis agents completed`);
+        // phase 3: aggregate + score
+        await orchestrator.runAggregation(claimId);
 
-        // Phase 3: Aggregation & Scoring
-        await orch.runAggregation(claimId);
-        console.log(`  ✓ Phase 3: Aggregation completed`);
-
-        // Phase 4: Routing (AI-only or community voting)
-        await orch.routeClaim(claimId);
-        console.log(`  ✓ Phase 4: Routing completed`);
+        // phase 4: route to ai-only or community vote
+        await orchestrator.routeClaim(claimId);
 
         console.log(`✅ Background processing completed for claim ${claimId}`);
 
@@ -444,5 +412,25 @@ async function processClaimBackground(claimId: number, orch: ResultOrchestrator)
         }
     }
 }
+
+// POST /api/claims/:id/process
+// triggered internally by the mcp server after submit_to_verichain creates a claim
+router.post('/:id/process', async (req, res) => {
+    const claimId = parseInt(req.params.id);
+    if (isNaN(claimId)) return res.status(400).json({ error: 'invalid claim id' });
+
+    const claim = await prisma.claim.findUnique({ where: { id: claimId }, select: { id: true, status: true } });
+    if (!claim) return res.status(404).json({ error: `claim ${claimId} not found` });
+    if (claim.status !== 'pending_ai') {
+        return res.status(409).json({ error: 'claim is not in pending_ai state', status: claim.status });
+    }
+
+    // fire-and-forget
+    processClaimBackground(claimId).catch(err => {
+        console.error(`mcp-triggered pipeline failed for claim ${claimId}:`, err);
+    });
+
+    return res.status(202).json({ accepted: true, claimId, message: 'pipeline started' });
+});
 
 export default router;

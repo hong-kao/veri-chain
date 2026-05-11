@@ -1,4 +1,4 @@
-import ResultOrchestrator from './resultAgentOrchestrator.js';
+import { orchestrator as ResultOrchestrator } from './resultAgentOrchestrator.js';
 import { env } from '../config/env.config.js';
 
 async function testResultOrchestrator() {
