@@ -1,41 +1,17 @@
-# VeriChain: Decentralized Claim Verification with Incentivized Community & AI
+# VeriChain: Decentralized Claim Verification with Agentic AI & Community Consensus
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.20-blue.svg)](https://soliditylang.org/)
 [![React](https://img.shields.io/badge/React-19.1.1-blue.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue.svg)](https://www.typescriptlang.org/)
 
-**A Decentralized, Agentic AI-Powered Misinformation Detection Platform**
+**A Decentralized, Agentic AI-Powered Misinformation Detection Platform on Base Sepolia**
 
-VeriChain combines agentic AI with community-driven verification to create an immutable, decentralized database of verified information. Built on blockchain technology, it serves as a verification layer that platforms can query via API rather than being a standalone social platform.
-
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="docs/home_page.png" alt="Home Page" width="300"/><br/>
-      <b>Home Page</b><br/>
-      <em>With a cool water effect</em>
-    </td>
-    <td align="center">
-      <img src="docs/profile_page.png" alt="Profile Page" width="300"/><br/>
-      <b>Profile Dashboard</b><br/>
-      <em>Manage your account</em>
-    </td>
-    <td align="center">
-      <img src="docs/submit_page.png" alt="Submit Claim" width="300"/><br/>
-      <b>Submit Claim</b><br/>
-      <em>Our Agentic AI-engine</em>
-    </td>
-  </tr>
-</table>
-
----
+VeriChain combines Gemini 2.0 Flash agentic AI with community-driven verification to create an immutable, decentralized database of verified information. Built on blockchain technology, it serves as a verification layer that platforms can query via API or Model Context Protocol (MCP) rather than being a standalone social platform.
 
 ## 🌟 Overview
 
-VeriChain is a decentralized verification protocol combining community consensus, economic incentives, and AI analysis to create a portable verification layer. Rather than building another social platform, VeriChain serves as verification infrastructure that any platform can integrate via API.
+VeriChain creates a decentralized verification protocol combining community consensus, economic incentives, and high-speed AI analysis to create a portable verification layer.
 
 ### The Problem
 - **Verification Gap**: Misinformation spreads before fact-checking catches it. No universal trust mechanism exists across platforms.
@@ -43,386 +19,124 @@ VeriChain is a decentralized verification protocol combining community consensus
 - **Fragmentation**: Every platform fact-checks independently, duplicating work and creating inconsistent trust models.
 
 ### The Solution
-VeriChain creates a decentralized marketplace where specialized AI agents verify claims and communities stake capital to vote on accuracy. Agents earn compensation for accurate work, creating sustainable economic incentives.
+VeriChain creates a decentralized marketplace where a swarm of specialized Gemini 2.0 AI agents verifies claims and communities stake capital to vote on accuracy. 
 
 ## 🚀 How It Works
 
-1. **Claim Submission**: Users stake ETH to submit claims, preventing spam.
-2. **AI Verification**: Specialized agents analyze claims (text logic, image authenticity, source credibility, citation accuracy). Each agent gets compensated.
-3. **Community Voting**: Users stake ETH to vote TRUE/FALSE. Correct voters earn rewards; incorrect voters lose a small penalty.
-4. **Consensus**: Final verdict weighs community votes 70% and AI analysis 30%. If they conflict, result = UNCLEAR.
-5. **Immutable Record**: Verdict stored on blockchain. Any platform queries via API instead of fact-checking independently.
-6. **Rewards**: Correct voters and accurate agents earn from verification fees. Protocol takes a cut for infrastructure.
+1. **Claim Submission**: Users submit claims on-chain via Web3 wallets.
+2. **AI Swarm Analysis**: A synchronized swarm of Gemini 2.0 Flash agents analyzes claims (Text Forensics, Citations, Source Credibility, Social Evidence, Media Forensics, Pattern Recognition).
+3. **Scoring & Routing**: An orchestrator calculates a weighted confidence score. High confidence verdicts are auto-resolved. Low confidence verdicts are routed to community voting.
+4. **Community Voting**: Users stake ETH to vote TRUE/FALSE on uncertain claims.
+5. **Reward Redistribution**: Correct voters receive their stake back plus a proportional cut of the losing side's pool.
+6. **Immutable Record**: All verdicts are finalized on Base Sepolia, available for external systems to consume via our MCP Server.
 
 ## 🏗️ Architecture
 
-### Smart Contracts
-- **FactCheckRegistry**: Manages claims, AI analysis, and verdicts
-- **StakePool**: Handles token deposits, staking, rewards, and penalties
+### Smart Contracts (Base Sepolia)
+- **ClaimRegistry**: Manages claims, UUID generation, and on-chain hashing.
+- **VerificationMarket**: Handles ETH staking, voting, and proportional reward distribution.
+- **Reputation & VerifierBadge**: Tracks user credibility and awards NFTs for top fact-checkers.
 
-### Backend Services
-- **Express.js API**: RESTful endpoints for claim analysis
-- **Gemini AI Integration**: Google's Gemini 2.5 Pro for fact-checking
-- **TypeScript**: Full type safety and modern development
+### Backend Infrastructure
+- **Agent Orchestrator**: High-performance pipeline executing 6 Gemini Flash agents in parallel.
+- **MCP Server**: Model Context Protocol implementation allowing AI assistants (like Claude) to natively query VeriChain verdicts and submit claims.
+- **PostgreSQL / Prisma**: High-speed indexing and caching of claim data.
+- **Dockerized**: Fully containerized environment for immediate spin-up.
 
 ### Frontend Application
-- **React 19**: Modern UI with hooks and functional components
-- **Ethers.js**: Web3 integration for blockchain interactions
-- **Tailwind CSS**: Responsive design with gradient themes
-- **MetaMask Integration**: Wallet connection and transaction signing
-
-## 📁 Project Structure
-
-```
-VeriChain/
-├── docs/                        # Documentation and screenshots
-│   ├── home_page.png            # Landing page screenshot
-│   ├── profile_page.png         # Profile dashboard screenshot
-│   └── submit_page.png          # Submit claim page screenshot
-│
-├── web3/                        # Smart contracts and blockchain logic
-│   ├── contracts/               # Solidity smart contracts
-│   │   ├── ClaimRegistry.sol    # Claim submission & management
-│   │   ├── VerificationMarket.sol # Staking & voting marketplace
-│   │   ├── Reputation.sol       # User reputation tracking
-│   │   └── VerifierBadge.sol    # NFT badges for verifiers
-│   ├── scripts/                 # Deployment scripts
-│   │   ├── deploy_all.ts        # Deploy all contracts
-│   │   ├── deploy_ClaimRegistry.ts
-│   │   ├── deploy_VerificationMarket.ts
-│   │   ├── deploy_Reputation.ts
-│   │   ├── deploy_VerifierBadge.ts
-│   │   └── checkOwner.ts
-│   ├── test/                    # Contract tests
-│   │   ├── ClaimRegistry.test.ts
-│   │   ├── VerificationMarket.test.ts
-│   │   ├── Reputation.test.ts
-│   │   └── VerifierBadge.test.ts
-│   ├── artifacts/               # Compiled contracts
-│   ├── typechain-types/         # TypeScript bindings
-│   ├── hardhat.config.ts
-│   └── package.json
-│
-├── backend/                     # API server and AI agents
-│   ├── src/
-│   │   ├── agents/              # AI verification agents
-│   │   │   ├── resultAgentOrchestrator.ts  # Main orchestrator
-│   │   │   ├── claimIntakeAgent.ts         # Claim preprocessing
-│   │   │   ├── citationAgent.ts            # Source citation verification
-│   │   │   ├── textForensicsAgent.ts       # Text analysis
-│   │   │   ├── mediaForensicsAgent.ts      # Image/video analysis
-│   │   │   ├── sourceCredAgent.ts          # Source credibility scoring
-│   │   │   ├── socialEvidenceAgent.ts      # Social media evidence
-│   │   │   ├── communityRoutingAgent.ts    # Community routing
-│   │   │   ├── patternAgent.ts             # Pattern detection
-│   │   │   └── scoringAgent.ts             # Final scoring
-│   │   ├── routes/              # API endpoints
-│   │   │   ├── auth.routes.ts   # Authentication routes
-│   │   │   ├── claim.routes.ts  # Claim CRUD operations
-│   │   │   └── analyze.routes.ts # AI analysis endpoints
-│   │   ├── config/              # Configuration
-│   │   │   ├── env.config.ts    # Environment variables
-│   │   │   └── db.config.ts     # Database configuration
-│   │   ├── services/            # Business logic
-│   │   │   └── gemini.service.ts # Google Gemini AI integration
-│   │   ├── utils/               # Utility functions
-│   │   │   ├── scraper.ts       # Web scraping utilities
-│   │   │   ├── socialFetcher.ts # Social media data fetching
-│   │   │   ├── email.ts         # Email utilities
-│   │   │   └── llm.ts           # LLM helper functions
-│   │   ├── abis/                # Contract ABIs
-│   │   │   ├── ClaimRegistry.json
-│   │   │   ├── VerificationMarket.json
-│   │   │   ├── Reputation.json
-│   │   │   └── VerifierBadge.json
-│   │   ├── types/               # TypeScript definitions
-│   │   │   ├── agent.types.ts
-│   │   │   └── index.ts
-│   │   ├── middleware/          # Express middleware
-│   │   └── index.ts             # Express server entry
-│   ├── prisma/                  # Database ORM
-│   │   └── schema.prisma        # Database schema
-│   ├── uploads/                 # File uploads directory
-│   ├── package.json
-│   └── tsconfig.json
-│
-└── frontend/                    # React frontend application
-    ├── src/
-    │   ├── components/          # Reusable UI components
-    │   │   ├── Nav.tsx          # Landing page navigation
-    │   │   ├── AppNav.tsx       # In-app navigation sidebar
-    │   │   ├── WaterCanvas.tsx  # Animated water background
-    │   │   ├── WaterFillLoader.tsx # Page loading animation
-    │   │   ├── TerminalLoader.tsx  # Terminal-style loader
-    │   │   ├── ProtectedRoute.tsx  # Auth route guard
-    │   │   ├── ErrorBoundary.tsx   # Error handling
-    │   │   └── AppFooter.tsx    # Footer component
-    │   ├── pages/               # Application pages
-    │   │   ├── Home.tsx         # Landing page with water animation
-    │   │   ├── Auth.tsx         # Authentication (OAuth/Email/Wallet)
-    │   │   ├── Onboarding.tsx   # User onboarding flow
-    │   │   ├── Profile.tsx      # Profile dashboard
-    │   │   ├── SubmitClaim.tsx  # Chat-based claim submission
-    │   │   ├── ViewClaims.tsx   # Active/completed claims list
-    │   │   ├── ClaimsSubmit.tsx # Alternative claim submission
-    │   │   ├── Claims.tsx       # Claims management
-    │   │   ├── Dashboard.tsx    # User dashboard
-    │   │   ├── Explore.tsx      # Explore trending claims
-    │   │   ├── Leaderboard.tsx  # User rankings
-    │   │   └── Notifications.tsx # User notifications
-    │   ├── context/             # React context providers
-    │   │   └── AuthContext.tsx  # Authentication state
-    │   ├── services/            # API service layer
-    │   │   ├── api.ts           # Backend API client
-    │   │   └── walletService.ts # Wallet integration
-    │   ├── config/              # Frontend configuration
-    │   │   └── contracts.ts     # Contract addresses
-    │   ├── styles/              # CSS stylesheets
-    │   │   ├── AppPages.css     # Main page styles
-    │   │   └── TerminalStyles.css
-    │   ├── lib/                 # Utility libraries
-    │   │   └── shaders.ts       # WebGL shaders
-    │   ├── assets/              # Static assets
-    │   ├── App.tsx              # Main application router
-    │   ├── App.css              # App-level styles
-    │   ├── index.css            # Global styles
-    │   └── main.jsx             # React entry point
-    ├── public/                  # Static public assets
-    ├── index.html               # HTML entry point
-    ├── vite.config.js           # Vite configuration
-    ├── tailwind.config.js       # Tailwind CSS config
-    ├── postcss.config.js        # PostCSS configuration
-    └── package.json
-```
+- **React 19 & Vite**: Ultra-fast frontend build.
+- **Wallet-Only Auth**: Strictly Web3 identity via MetaMask (no email/password forms).
+- **Live Polling**: Real-time websocket-like polling for AI agent breakdowns.
 
 ## 🛠️ Setup & Installation
 
+VeriChain uses Docker to seamlessly boot the database, backend, and frontend environments.
+
 ### Prerequisites
-- Node.js (v18+)
-- npm or yarn
-- MetaMask wallet
-- Sepolia ETH for testing
-- Google Gemini API key
+- Node.js (v20+)
+- Docker & Docker Compose
+- MetaMask wallet with Base Sepolia ETH
+- Google Gemini API Key
 
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd veriChain
+cd veri-chain
 ```
 
-### 2. Environment Setup
+### 2. Environment Configuration
 
-Create `.env` files in `web3/`, `backend/`, and `frontend/` directories:
+Create `.env` files based on the provided examples.
 
-**web3/.env**
+**Backend (`backend/.env`)**:
 ```env
-RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+PORT=8080
+DATABASE_URL=postgresql://verichain:verichain_dev@db:5432/verichain
+GEMINI_API_KEY=your_gemini_api_key
+RPC_URL=https://sepolia.base.org
 PRIVATE_KEY=your_wallet_private_key
 ```
 
-**backend/.env**
+**Frontend (`frontend/.env`)**:
 ```env
-# Server
-PORT=8080
-NODE_ENV=development
-
-# AI/LLM APIs (Not all are required - see notes in .env.example)
-GEMINI_API_KEY=your_gemini_api_key          # Required - Primary AI engine
-PERPLEXITY_API_KEY=your_perplexity_key      # Optional - Enhanced search
-OPENAI_API_KEY=                              # Optional
-DEEPSEEK_API_KEY=                            # Optional
-QWEN_API_KEY=                                # Optional
-
-# LangSmith Tracing (Optional - for debugging)
-LANGSMITH_TRACING=true
-LANGSMITH_ENDPOINT=
-LANGSMITH_API_KEY=
-LANGSMITH_PROJECT=
-
-# Web Scraping & Search
-SCRAPER_API_URL=http://localhost:3000/v1/
-BRAVE_API_KEY=
-SERP_API_KEY=
-
-# Fact-Checking APIs
-GOOGLE_FACTCHECK_API_KEY=
-CLAIMBUSTER_API_KEY=
-WORDLIFT_API=
-
-# Social Media
-NEYNAR_API_KEY=                              # Farcaster integration
-
-# Media Analysis
-HIVE_ACCESS_ID=
-HIVE_SECRET_KEY=
-SIGHTENGINE_API_USER=
-SIGHTENGINE_API_SECRET=
-
-# Database
-DATABASE_URL=postgresql://user:pass@host:5432/db
-
-# Email
-NODEMAILER_USER=
-NODEMAILER_PASSWORD=
-
-# Blockchain
-RPC_URL=
-PRIVATE_KEY=
-CLAIM_REGISTRY_ADDRESS=
-STAKING_VOTING_ADDRESS=
-
-# Auth
-JWT_SECRET=your_jwt_secret
+VITE_API_BASE_URL=http://localhost:8080/api
+VITE_CLAIM_REGISTRY_ADDRESS=0xeD67F63B90Af9c436B36A37f048f259568F05ac5
+VITE_VERIFICATION_MARKET_ADDRESS=0xCa8f98130a054F7Ec42cf36416af9E4B892B0A28
 ```
 
-> **Note**: Not all API keys are required. See `backend/.env.example` for details on which are actively used.
-
-**frontend/.env**
-```env
-VITE_API_URL=http://localhost:8080
-VITE_CLAIM_REGISTRY_ADDRESS=your_deployed_registry_address
-VITE_VERIFICATION_MARKET_ADDRESS=your_deployed_market_address
-```
-
-### 3. Smart Contracts Setup
-
+### 3. Run Pre-flight Check
+Verify your environment dependencies are correctly installed:
 ```bash
-cd web3
-npm install
-npx hardhat compile
-npx hardhat test
+bash scripts/preflight-check.sh
 ```
 
-### 4. Deploy Contracts
-
+### 4. Boot the Infrastructure
+Use Docker Compose to launch the Database, Backend API, and Frontend UI:
 ```bash
-# Deploy to Sepolia testnet
-npx hardhat run scripts/deploy.ts --network sepolia
+# Start the database and run migrations
+docker compose up -d db
+docker compose run --rm backend npx prisma migrate dev --name init
+
+# Start the full stack
+docker compose up -d
 ```
+- **Frontend**: Available at `http://localhost:5173`
+- **Backend API**: Available at `http://localhost:8080`
 
-Save the deployed contract addresses for your frontend configuration.
+## 🤖 MCP Server Integration
 
-### 5. Backend Setup
+VeriChain includes a fully functional Model Context Protocol (MCP) server. This allows AI IDEs (like Cursor, Windsurf) or AI Assistants (like Claude Desktop) to natively interact with the decentralized fact-checking protocol.
 
-```bash
-cd ../backend
-npm install
-npm run build
-npm start
-```
+**Available Tools:**
+- `check_prior_verdicts`: Semantically search the VeriChain DB for previously verified claims.
+- `submit_to_verichain`: Submit a new claim to the network and trigger the AI agent swarm.
+- `get_claim_status`: Monitor the real-time status of a claim and read individual agent verdicts.
 
-The backend will start on `http://localhost:3001`
-
-### 6. Frontend Setup
-
-```bash
-cd ../frontend
-npm install
-npm run dev
-```
-
-The frontend will start on `http://localhost:5173`
-
-## 🧪 Testing
-
-### Smart Contract Tests
-```bash
-cd web3
-npx hardhat test
-```
-
-### Backend API Tests
+**To run the MCP server:**
 ```bash
 cd backend
-# Start the server
-npm start
-
-# Test endpoints
-curl http://localhost:3001/api/health
-curl -X POST http://localhost:3001/api/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"claim": "The Earth is flat"}'
+npm run mcp:dev
 ```
+*Configure your MCP client to spawn this server via `stdio` using `npx tsx src/mcp/server.ts`.*
 
-### Frontend Testing
-```bash
-cd frontend
-npm run dev
-# Open http://localhost:5173 in your browser
+## 📁 Repository Structure
+
 ```
-
-## 🛠️ Setup
-
-### Quick Start Commands
-
-```bash
-# Clone and install all dependencies
-git clone <repository-url>
-cd VeriChain
-
-# Backend
-cd backend && npm install && npm run build && npm start
-
-# Frontend (new terminal)
-cd frontend && npm install && npm run dev
-
-# Smart Contracts (new terminal)
-cd web3 && npm install && npx hardhat compile
-npx hardhat run scripts/deploy_all.ts --network sepolia
+veri-chain/
+├── backend/                  # Express API, MCP Server, Gemini Agent Swarm
+│   ├── src/agents/           # Individual Gemini 2.0 Flash agents
+│   ├── src/mcp/              # MCP server implementation
+│   ├── src/routes/           # API endpoints
+│   └── prisma/               # Database schema
+├── frontend/                 # React 19 SPA
+│   ├── src/pages/            # Wallet-only auth, live claims UI, voting UI
+│   ├── src/components/       # Animated UI components
+│   └── src/services/         # Contract interaction & API polling
+├── web3/                     # Hardhat smart contract environment
+│   ├── contracts/            # Solidity files (ClaimRegistry, VerificationMarket)
+│   └── scripts/              # Base Sepolia deployment scripts
+└── docker-compose.yml        # Infrastructure orchestration
 ```
-
-## 🔄 Workflow
-
-### AI Verification Agents
-
-VeriChain uses a multi-agent architecture where specialized AI agents analyze claims from different perspectives:
-
-| Agent | Purpose |
-|-------|---------|
-| **Claim Intake Agent** | Preprocesses and structures incoming claims for analysis |
-| **Citation Agent** | Verifies sources and cross-references cited information |
-| **Text Forensics Agent** | Analyzes linguistic patterns and logical consistency |
-| **Media Forensics Agent** | Detects manipulated images, videos, and audio |
-| **Source Credibility Agent** | Evaluates the trustworthiness of information sources |
-| **Social Evidence Agent** | Gathers corroborating evidence from social platforms |
-| **Community Routing Agent** | Routes claims to appropriate community experts |
-| **Pattern Agent** | Identifies known misinformation patterns |
-| **Scoring Agent** | Aggregates agent outputs into final confidence score |
-| **Result Orchestrator** | Coordinates all agents and produces the final verdict |
-
-### Verification Process
-
-1. **AI Inference**: Claims are processed through our multi-agent system for comprehensive analysis
-2. **Community Voting**: When needed, verified community members stake tokens to vote on claim accuracy
-3. **Consensus**: Final verdict combines AI confidence score with community consensus
-4. **Rewards**: Correct voters earn rewards from their stake, while incorrect voters face penalties
-5. **On-Chain Recording**: All verdicts are permanently stored on the blockchain
-
-### Leaderboard & Incentives
-
-- **Rankings**: Users are ranked based on their verification accuracy and participation
-- **Rewards**: Winners of votes receive token rewards proportional to their stake
-- **NFT Badges**: **Top 5 verifiers** on the leaderboard get minted exclusive Verifier Badge NFTs
-
-## 💰 Business Model
-
-- **Verification Fees**: Per-claim analysis fees
-- **Agent Compensation**: Based on accuracy and performance
-- **Enterprise API**: Licensing for large-scale integrations
-- **Data Access**: Research and analytics for academic institutions
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📄 License
-
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-**Built with ❤️ by Team Baked**
