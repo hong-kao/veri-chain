@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '../utils/email.js';
 import { sendVotingNotifications } from '../services/emailService.js';
-import { logicConsistencyAgent } from './textForensicsAgent.js';
+import { textForensicsAgent } from './textForensicsAgent.js';
 import { citationEvidenceAgent } from './citationAgent.js';
 import { sourceCredibilityAgent } from './sourceCredAgent.js';
 import { socialEvidenceAgent } from './socialEvidenceAgent.js';
@@ -344,7 +344,7 @@ export class ResultOrchestrator {
 
     // ALWAYS run these core agents (essential for any claim):
     // 1. Logic & Consistency - checks for logical fallacies, contradictions
-    agentPromises.push(this.runAgent(claimId, 'logic_consistency', logicConsistencyAgent, claim));
+    agentPromises.push(this.runAgent(claimId, 'logic_consistency', textForensicsAgent, claim));
     console.log('   ✓ Running: logic_consistency (core agent)');
 
     // 2. Citation Evidence - searches for supporting/contradicting evidence
@@ -457,8 +457,11 @@ export class ResultOrchestrator {
         messages: []
       };
 
-      // Invoke agent
-      const result = await agentFunction.invoke(agentInput);
+      // invoke agent -- new agents are plain async functions, old ones used .invoke()
+      // todo(t14): remove this fallback once orchestrator is fully rewritten
+      const result = typeof (agentFunction as any).invoke === 'function'
+        ? await (agentFunction as any).invoke(agentInput)
+        : await (agentFunction as any)(agentInput);
 
       // FIXED: Extract verdict based on what the agent actually returns
       // Different agents return different fields, so we need to check multiple options
