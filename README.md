@@ -23,6 +23,32 @@ VeriChain creates a decentralized marketplace where a swarm of specialized Gemin
 
 ## 🚀 How It Works
 
+```mermaid
+flowchart TD
+    User([User / MCP Client]) -->|1. Submit Claim| FE(Frontend UI / MCP)
+    FE -->|2. Register On-Chain| SC_CR[ClaimRegistry Contract]
+    FE -->|3. Trigger Pipeline| API(Backend API)
+    
+    API --> ORCH{Agent Orchestrator}
+    
+    ORCH -->|Parallel Execution| AG1[Text Forensics]
+    ORCH -->|Parallel Execution| AG2[Citation Evidence]
+    ORCH -->|Parallel Execution| AG3[Source Credibility]
+    ORCH -->|Parallel Execution| AG4[Social Evidence]
+    ORCH -->|Parallel Execution| AG5[Media Forensics]
+    ORCH -->|Parallel Execution| AG6[Pattern Agent]
+    
+    AG1 & AG2 & AG3 & AG4 & AG5 & AG6 --> SCORE[Scoring Agent]
+    
+    SCORE --> COND{High Confidence?}
+    COND -->|Yes >= 70%| RESOLVE[Auto-Resolve]
+    COND -->|No < 70%| VOTE[Community Voting]
+    
+    RESOLVE -->|Publish Verdict| SC_VM[VerificationMarket Contract]
+    VOTE -->|Users Stake & Vote| SC_VM
+    SC_VM -->|Distribute Rewards| Users([Users])
+```
+
 1. **Claim Submission**: Users submit claims on-chain via Web3 wallets.
 2. **AI Swarm Analysis**: A synchronized swarm of Gemini 2.0 Flash agents analyzes claims (Text Forensics, Citations, Source Credibility, Social Evidence, Media Forensics, Pattern Recognition).
 3. **Scoring & Routing**: An orchestrator calculates a weighted confidence score. High confidence verdicts are auto-resolved. Low confidence verdicts are routed to community voting.
@@ -31,6 +57,42 @@ VeriChain creates a decentralized marketplace where a swarm of specialized Gemin
 6. **Immutable Record**: All verdicts are finalized on Base Sepolia, available for external systems to consume via our MCP Server.
 
 ## 🏗️ Architecture
+
+```mermaid
+graph TD
+    subgraph Client Layer
+        UI[React 19 Frontend]
+        MCP[MCP Client / AI Assistant]
+        Wallet[MetaMask]
+    end
+
+    subgraph Backend Infrastructure
+        API[Express API]
+        MCPServer[MCP Server]
+        DB[(PostgreSQL)]
+        
+        subgraph AI Layer
+            Orchestrator[Gemini Agent Orchestrator]
+            Agents[6x Gemini Flash Agents]
+            Orchestrator --- Agents
+        end
+    end
+
+    subgraph Blockchain Layer
+        Base[Base Sepolia Network]
+        Contracts[Registry & Market Contracts]
+        Base --- Contracts
+    end
+
+    UI <-->|REST / WS| API
+    MCP <-->|stdio| MCPServer
+    MCPServer <--> API
+    UI <-->|RPC| Wallet
+    Wallet <-->|Sign Tx| Base
+    API <-->|Prisma| DB
+    API <--> Orchestrator
+    API <-->|Ethers.js| Base
+```
 
 ### Smart Contracts (Base Sepolia)
 - **ClaimRegistry**: Manages claims, UUID generation, and on-chain hashing.
