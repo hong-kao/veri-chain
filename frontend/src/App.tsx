@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Auth from './pages/Auth';
 import ViewClaims from './pages/ViewClaims';
 import SubmitClaim from './pages/SubmitClaim';
+import ClaimDetail from './pages/ClaimDetail';
 
 export default function App() {
   return (
@@ -13,6 +14,10 @@ export default function App() {
 
         <Route path="/claims" element={
           <ProtectedRoute><ViewClaims /></ProtectedRoute>
+        } />
+
+        <Route path="/claims/:id" element={
+          <ProtectedRoute><ClaimDetail /></ProtectedRoute>
         } />
 
         <Route path="/submit" element={
