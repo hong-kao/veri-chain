@@ -13,7 +13,8 @@ export default function Auth() {
         if (isConnected) navigate(from, { replace: true });
     }, [isConnected, navigate, from]);
 
-    const handleConnect = async () => {
+    const handleConnect = async (e: React.MouseEvent) => {
+        e.preventDefault();
         try {
             await connectWallet();
         } catch (err: any) {

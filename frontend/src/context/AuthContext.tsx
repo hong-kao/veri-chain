@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { ethers } from 'ethers';
 import { api } from '../services/api';
 
 declare global {
@@ -62,8 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setIsLoading(true);
         try {
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            const address: string = accounts[0];
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+
+            if (!address) {
+                throw new Error('No account found');
+            }
 
             try {
                 const response = await api.verifyWallet(address);
@@ -75,10 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     userId: response.user?.id,
                 });
                 if (response.token) sessionStorage.setItem('verichain-token', response.token);
-            } catch {
+            } catch (apiErr) {
+                console.warn('backend verifyWallet failed, continuing offline:', apiErr);
                 // backend unreachable -- still connect wallet
                 setAuthState({ walletAddress: address, isConnected: true, canVote: true });
             }
+        } catch (err: any) {
+            console.error('Wallet connection failed:', err);
+            throw err;
         } finally {
             setIsLoading(false);
         }
