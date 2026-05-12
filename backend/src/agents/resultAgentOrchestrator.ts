@@ -130,9 +130,10 @@ export class VeriChainOrchestrator {
     if (hasMedia) tasks.push({ agentName: AgentType.media_forensics, fn: mediaForensicsAgent });
     if (hasUrls || platform) tasks.push({ agentName: AgentType.propagation_pattern, fn: propagationPatternAgent });
 
-    // run all in parallel, capture failures gracefully
-    const settled = await Promise.allSettled(
-      tasks.map(async ({ agentName, fn }) => {
+    // run all sequentially to avoid Gemini API 429 rate limit on free tier, capture failures gracefully
+    const settled: any[] = [];
+    for (const { agentName, fn } of tasks) {
+      try {
         const start = Date.now();
         const output = await fn(baseInput);
         const ms = Date.now() - start;
@@ -149,9 +150,15 @@ export class VeriChainOrchestrator {
           }
         });
 
-        return { agentName, verdict: output.verdict, confidence: output.confidence, ms };
-      })
-    );
+        settled.push({ status: 'fulfilled', value: { agentName, verdict: output.verdict, confidence: output.confidence, ms } });
+        
+        // 1 second delay between agent calls to prevent 429s
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err: any) {
+        console.error(`agent ${agentName} failed:`, err.message || err);
+        settled.push({ status: 'rejected', reason: err });
+      }
+    }
 
     let passed = 0;
     for (const r of settled) {
